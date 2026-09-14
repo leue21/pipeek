@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false,"historyCacheSize":0,"selfRequestsOnly":true}'>
+<title>PiPeek · {{.Host}}</title>
+<link rel="icon" href="{{.Base}}assets/favicon.svg?v=mocha-1" type="image/svg+xml">
+<link rel="stylesheet" href="{{.Base}}assets/style.css?v=mocha-1">
+<script src="{{.Base}}assets/vendor/htmx.min.js" defer></script>
+<script src="{{.Base}}assets/app.js" defer></script>
+</head>
+<body data-interval="{{.Interval}}">
+<div class="shell">
+<header class="topbar"><a class="brand" href="{{.Base}}"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 23V9h7a6 6 0 0 1 0 12H9m10 2V9h3a6 6 0 0 1 0 12"/></svg>PiPeek<span class="brand-tag">a little insight.</span></a><button id="theme" type="button" aria-label="Switch color theme">◐ <span>Theme</span></button></header>
+<main>
+<div class="heading"><div><div class="eyebrow">YOUR MACHINE, AT A GLANCE</div><h1>System overview<span class="accent">.</span></h1><p class="host"><span class="host-icon">⌘</span> {{.Host}} <span class="separator">/</span> Linux</p></div><div class="connection"><span id="connection" role="status" class="badge">Connecting</span><span class="refresh-note">Refreshes every <span id="interval-label"></span></span></div></div>
+<noscript><p class="notice">Live updates require JavaScript. Reload this page to see a new sample.</p></noscript>
+<section id="metrics" aria-label="System metrics" hx-get="{{.Base}}metrics" hx-trigger="refresh" hx-swap="innerHTML" hx-sync="this:drop">{{.Fragment}}</section>
+</main>
+<footer><span><span class="footer-dot">●</span> Small footprint. Clear picture.</span><span>PiPeek <span class="separator">/</span> Made for a quick peek</span></footer>
+</div>
+</body></html>
