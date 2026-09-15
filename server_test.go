@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -133,5 +134,28 @@ func BenchmarkServeMetrics(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		h.ServeHTTP(httptest.NewRecorder(), r)
+	}
+}
+
+func TestSampleAgeForFreshAndFrozenResponses(t *testing.T) {
+	a, _ := newApp("/", "host", time.Second, time.Minute)
+	a.update(sample{At: time.Now().Add(-time.Minute)})
+	w := httptest.NewRecorder()
+	a.handler().ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	age, err := strconv.ParseInt(w.Header().Get("X-PiPeek-Sample-Age"), 10, 64)
+	if err != nil || age < 60000 {
+		t.Fatalf("incorrect age: %d %v", age, err)
+	}
+	w = httptest.NewRecorder()
+	a.handler().ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+	if !strings.Contains(w.Body.String(), `data-sample-age="60`) {
+		t.Fatal("initial page missing server-computed age")
+	}
+	a.update(sample{At: time.Now()})
+	w = httptest.NewRecorder()
+	a.handler().ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	age, err = strconv.ParseInt(w.Header().Get("X-PiPeek-Sample-Age"), 10, 64)
+	if err != nil || age >= 1000 {
+		t.Fatalf("fresh sample age: %d %v", age, err)
 	}
 }

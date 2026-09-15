@@ -39,14 +39,16 @@ type sample struct {
 	Warnings                          []string
 }
 type collector struct {
-	proc, sys  string
-	disks      []string
-	interfaces map[string]bool
-	cpu        cpuCounters
-	cpuAt      time.Time
-	nets       map[string]netCounters
-	netAt      time.Time
-	tempPath   string
+	proc, sys      string
+	disks          []string
+	interfaces     map[string]bool
+	cpu            cpuCounters
+	cpuAt          time.Time
+	nets           map[string]netCounters
+	netAt          time.Time
+	tempPath       string
+	requiredMounts map[string]bool
+	diskIDs        map[string]syscall.Fsid
 }
 
 func parseCPU(data string) (cpuCounters, error) {
@@ -183,10 +185,32 @@ func (c *collector) collect(now time.Time) sample {
 			c.tempPath = ""
 		}
 	}
+	var mounted map[string]bool
+	if len(c.requiredMounts) > 0 {
+		if data, err := c.read("self/mountinfo"); err == nil {
+			mounted = mountPoints(data)
+		}
+	}
+	if c.diskIDs == nil {
+		c.diskIDs = make(map[string]syscall.Fsid)
+	}
 	for _, path := range c.disks {
 		d := disk{Path: path}
 		var st syscall.Statfs_t
+		resolved, resolveErr := filepath.EvalSymlinks(path)
+		resolved, absErr := filepath.Abs(resolved)
+		if c.requiredMounts[path] && (resolveErr != nil || absErr != nil || !mounted[resolved]) {
+			s.Warnings = append(s.Warnings, "Required mount unavailable: "+path)
+			s.Disks = append(s.Disks, d)
+			continue
+		}
 		if e := syscall.Statfs(path, &st); e == nil {
+			if expected, seen := c.diskIDs[path]; seen && expected != st.Fsid {
+				s.Warnings = append(s.Warnings, "Filesystem changed or unmounted: "+path)
+				s.Disks = append(s.Disks, d)
+				continue
+			}
+			c.diskIDs[path] = st.Fsid
 			d.Total = st.Blocks * uint64(st.Bsize)
 			d.Used = (st.Blocks - min(st.Blocks, st.Bfree)) * uint64(st.Bsize)
 			d.Available = st.Bavail * uint64(st.Bsize)
@@ -248,4 +272,17 @@ func percent(used, total uint64) float64 {
 func formatUptime(seconds float64) string {
 	n := int64(seconds)
 	return fmt.Sprintf("%dd %02dh %02dm", n/86400, n/3600%24, n/60%60)
+}
+
+// mountinfo escapes whitespace and backslashes in mount point names.
+func mountPoints(data string) map[string]bool {
+	result := make(map[string]bool)
+	unescape := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
+	for _, line := range strings.Split(data, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 10 && strings.Contains(line, " - ") {
+			result[unescape.Replace(fields[4])] = true
+		}
+	}
+	return result
 }

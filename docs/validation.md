@@ -16,3 +16,11 @@ The tests used temporary nginx and browser dependencies outside the source tree.
 The Catppuccin Mocha update also passed browser checks for palette colors, theme toggling/persistence, and mobile layout.
 
 [Dashboard preview](dashboard.png)
+
+## Reliability fixes — 2026-09-15
+
+- Go tests and vet passed, including active-request draining, shutdown deadlines, required mounts absent at startup, mount loss/recovery, filesystem identity changes, and server-computed sample age.
+- Chromium regression checks passed with browser clocks shifted ±60 seconds, a hung polling request, repeated frozen samples, and recovery after those failures.
+- In an isolated Linux mount namespace, unmounting a temporary test filesystem changed `/healthz` from 200 to 503. The host's mounts were not changed.
+- Linux ARMv6 and ARMv7 builds compiled successfully; native Linux arm64 was built and deployed.
+- The race detector limitation described above remains unresolved.

@@ -135,13 +135,15 @@ func (a *app) handler() http.Handler {
 	mux.HandleFunc("GET "+a.base+"{$}", func(w http.ResponseWriter, r *http.Request) {
 		a.mu.RLock()
 		fragment := a.fragment
+		age := max(int64(0), time.Since(a.sampled).Milliseconds())
 		a.mu.RUnlock()
 		// Only our escaped, rendered template is marked trusted here.
 		data := struct {
 			Base, Host string
 			Interval   int64
+			SampleAge  int64
 			Fragment   template.HTML
-		}{a.base, a.host, a.interval.Milliseconds(), template.HTML(fragment)}
+		}{a.base, a.host, a.interval.Milliseconds(), age, template.HTML(fragment)}
 		var buf bytes.Buffer
 		if err := a.templates.ExecuteTemplate(&buf, "index.html", data); err != nil {
 			http.Error(w, "Unable to render dashboard", 500)
@@ -153,7 +155,9 @@ func (a *app) handler() http.Handler {
 	mux.HandleFunc("GET "+a.base+"metrics", func(w http.ResponseWriter, r *http.Request) {
 		a.mu.RLock()
 		b := a.fragment
+		age := max(int64(0), time.Since(a.sampled).Milliseconds())
 		a.mu.RUnlock()
+		w.Header().Set("X-PiPeek-Sample-Age", strconv.FormatInt(age, 10))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write(b)
 	})

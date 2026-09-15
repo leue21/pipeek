@@ -133,3 +133,63 @@ func TestHistoryBoundAndGaps(t *testing.T) {
 	}
 
 }
+
+func TestRequiredMountDisappearanceAndRecovery(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "media disk")
+	if err := os.Mkdir(target, 0755); err != nil {
+		t.Fatal(err)
+	}
+	proc := filepath.Join(root, "proc")
+	if err := os.MkdirAll(filepath.Join(proc, "self"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	mountFile := filepath.Join(proc, "self/mountinfo")
+	write := func(data string) {
+		t.Helper()
+		if err := os.WriteFile(mountFile, []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := collector{proc: proc, sys: root, disks: []string{target}, requiredMounts: map[string]bool{target: true}}
+	// The directory exists even though the drive was absent at startup.
+	write("1 0 8:1 / / rw - ext4 /dev/root rw\n")
+	if c.collect(time.Now()).Disks[0].OK {
+		t.Fatal("unmounted directory accepted at startup")
+	}
+	entry := "2 1 8:2 / " + strings.ReplaceAll(target, " ", `\040`) + " rw - ext4 /dev/media rw\n"
+	write(entry)
+	if !c.collect(time.Now()).Disks[0].OK {
+		t.Fatal("mounted disk unavailable")
+	}
+	write("")
+	if c.collect(time.Now()).Disks[0].OK {
+		t.Fatal("unmount silently fell back to parent filesystem")
+	}
+	write(entry)
+	if !c.collect(time.Now()).Disks[0].OK {
+		t.Fatal("remount did not recover")
+	}
+	if err := os.Remove(mountFile); err != nil {
+		t.Fatal(err)
+	}
+	if c.collect(time.Now()).Disks[0].OK {
+		t.Fatal("missing mount table accepted")
+	}
+	// Remembered filesystem identity must not be replaced on a mismatch.
+	write(entry)
+	expected := c.diskIDs[target]
+	changed := expected
+	changed.X__val[0] ^= 1
+	c.diskIDs[target] = changed
+	if c.collect(time.Now()).Disks[0].OK {
+		t.Fatal("replacement filesystem accepted")
+	}
+	if c.diskIDs[target] != changed {
+		t.Fatal("mismatch overwrote expected identity")
+	}
+	c.diskIDs[target] = expected
+	if !c.collect(time.Now()).Disks[0].OK {
+		t.Fatal("original filesystem did not recover")
+	}
+}
