@@ -24,6 +24,7 @@ type point struct {
 	CPUOK, MemoryOK, TempOK, NetworkOK bool
 }
 type view struct {
+	TemperatureStatus                                  temperatureStatus
 	Sample                                             sample
 	CPUChart, MemoryChart, TempChart, RXChart, TXChart string
 	NetworkScale                                       string
@@ -39,8 +40,9 @@ type app struct {
 	sampled           time.Time
 	degraded          bool
 	// History is owned exclusively by the sampling goroutine.
-	points      []point
-	next, count int
+	points            []point
+	next, count       int
+	temperatureStatus temperatureStatus
 }
 
 func newApp(base, host string, interval, history time.Duration) (*app, error) {
@@ -68,7 +70,8 @@ func (a *app) update(s sample) {
 	for _, p := range points {
 		scale = math.Max(scale, math.Max(p.RX, p.TX))
 	}
-	v := view{Sample: s, Count: len(points), History: a.history.String(), NetworkScale: formatBytes(scale) + "/s"}
+	a.temperatureStatus = nextTemperatureStatus(a.temperatureStatus, s.Temperature, s.TempOK)
+	v := view{TemperatureStatus: a.temperatureStatus, Sample: s, Count: len(points), History: a.history.String(), NetworkScale: formatBytes(scale) + "/s"}
 	v.CPUChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.CPU, p.CPUOK })
 	v.MemoryChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.Memory, p.MemoryOK })
 	v.TempChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.Temperature, p.TempOK })

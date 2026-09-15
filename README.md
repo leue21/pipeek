@@ -48,6 +48,20 @@ For packaging or testing without changing the host, use `make install DESTDIR=/t
 
 Rates need two samples after startup or a counter read failure. Counter resets and new interfaces warm up rather than showing spikes. Core collection failures appear on the page. Network charts scale to the window's peak; CPU and memory use a fixed 0–100% scale. Restarting clears history.
 
+## Temperature status
+
+The temperature value and label use these default status bands:
+
+| Temperature | Status | Color |
+|---|---|---|
+| Below 60°C | Normal | Green |
+| 60–69.9°C | Warm | Yellow |
+| 70–79.9°C | Hot | Peach |
+| 80°C and above | Very hot | Red |
+| Missing sensor | Unavailable | Gray |
+
+Escalation is immediate. On cooling, a status steps down only below 58°C, 68°C, or 78°C respectively (2°C hysteresis), preventing flickering near a boundary. Missing readings reset the status; the next valid sample starts from its temperature band. The history chart stays peach. These are dashboard indicators, not hardware-specific throttling thresholds or an overall system health assessment.
+
 ## Configuration
 
 ```text
