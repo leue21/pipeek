@@ -6,12 +6,12 @@ A small, read-only Linux dashboard for a quick peek at your Raspberry Pi. Go ser
 
 ## Run
 
-Requires Linux and Go 1.24 or newer to build. The resulting binary needs no Go installation, CGO, or companion asset files.
+Requires Linux, Go 1.24 or newer, and Make to build. The resulting binary needs no Go installation, CGO, or companion asset files.
 
 ```sh
 git clone https://github.com/leue21/pipeek.git
 cd pipeek
-CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o bin/pipeek .
+make build
 ./bin/pipeek
 ```
 
@@ -22,6 +22,20 @@ Open <http://127.0.0.1:8080>. To access it directly from another device on your 
 ```
 
 Open `http://<pi-address>:8080/`. The default loopback listener is intended for a local nginx reverse proxy. PiPeek has no built-in authentication; use nginx authentication/TLS or a private network for remote access.
+
+## Make targets
+
+```sh
+make build                 # Build a static binary at bin/pipeek (also the default)
+make test                  # Run Go tests and go vet
+make test-race             # Run the race detector on a supported host with CGO
+make install SUDO=sudo     # Build and install the binary and systemd unit
+make clean                 # Remove local build outputs
+```
+
+Installation preserves systemd drop-ins and reloads unit definitions. It does not start or restart the service. Use `sudo systemctl enable --now pipeek` for the first start, or `sudo systemctl restart pipeek` after upgrading. When running as root, omit `SUDO=sudo`.
+
+For packaging or testing without changing the host, use `make install DESTDIR=/tmp/pipeek-package`; this stages the files and skips systemd operations. `GO` and `LDFLAGS` can be overridden, and standard Go cross-compilation environment variables also work with `make build`.
 
 ## What it shows
 
@@ -84,9 +98,7 @@ No WebSocket or streaming configuration is needed. Existing nginx TLS and access
 ## systemd
 
 ```sh
-sudo install -m 0755 bin/pipeek /usr/local/bin/pipeek
-sudo install -m 0644 deploy/pipeek.service /etc/systemd/system/pipeek.service
-sudo systemctl daemon-reload
+make install SUDO=sudo
 sudo systemctl enable --now pipeek
 ```
 
@@ -114,8 +126,8 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -trimpath -ldflags='-s -w' 
 ## Validate and measure
 
 ```sh
-go test -race ./...
-go vet ./...
+make test
+make test-race
 go test -run '^$' -bench . -benchmem
 ```
 
