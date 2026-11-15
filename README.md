@@ -1,10 +1,25 @@
 # PiPeek
 
+[![CI](https://github.com/leue21/pipeek/actions/workflows/ci.yml/badge.svg)](https://github.com/leue21/pipeek/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/leue21/pipeek)](https://github.com/leue21/pipeek/releases/latest)
+[![Go version](https://img.shields.io/github/go-mod/go-version/leue21/pipeek)](go.mod)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A small, read-only Linux dashboard for a quick peek at your Raspberry Pi. Go serves HTML; locally bundled HTMX refreshes the metric cards. No database, frontend build, CDN requests, or Go dependencies.
 
 ![PiPeek with the Catppuccin Mocha theme](docs/dashboard.png)
 
-## Run
+## Download
+
+Prebuilt static binaries for Linux (`arm64`, `armv7`, `armv6`, `amd64`) are attached to each [release](https://github.com/leue21/pipeek/releases/latest). On 64-bit Raspberry Pi OS:
+
+```sh
+curl -fLo pipeek https://github.com/leue21/pipeek/releases/latest/download/pipeek-linux-arm64
+chmod +x pipeek
+./pipeek
+```
+
+## Build from source
 
 Requires Linux, Go 1.24 or newer, and Make to build. The resulting binary needs no Go installation, CGO, or companion asset files.
 
