@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,42 +54,14 @@ func parsePeers(s string) ([]peer, error) {
 	return peers, nil
 }
 
-// What the overview needs from a peer's sample. Decoding only these fields
-// keeps the hub independent of fields a newer or older peer adds or lacks.
-type peerSample struct {
-	Version   string    `json:"version"`
-	Host      string    `json:"host"`
-	SampledAt time.Time `json:"sampled_at"`
-	CPU       struct {
-		Percent *float64 `json:"percent"`
-	} `json:"cpu"`
-	Memory *struct {
-		Percent float64 `json:"percent"`
-	} `json:"memory"`
-	Temperature struct {
-		Celsius *float64 `json:"celsius"`
-		Status  string   `json:"status"`
-	} `json:"temperature"`
-	Power struct {
-		UnderVoltage *bool `json:"under_voltage"`
-	} `json:"power"`
-	Reboot struct {
-		Required *bool `json:"required"`
-	} `json:"reboot"`
-	Disks []struct {
-		Path    string   `json:"path"`
-		OK      bool     `json:"ok"`
-		Percent *float64 `json:"percent"`
-	} `json:"disks"`
-	Warnings []string `json:"warnings"`
-}
-
 type peerState struct {
 	Peer     peer
-	Sample   *peerSample     // last good sample, nil if never reached
+	Sample   *apiSample      // last good sample, nil if never reached
 	Raw      json.RawMessage // the same sample as the peer sent it
 	LastSeen time.Time       // when Sample was fetched
+	Age      time.Duration   // how old the peer said the sample was then
 	Error    string          // why the last fetch failed; "" if it worked
+	hist     *history        // chart points built from the samples fetched
 }
 
 // A peer's answer is untrusted input: it is size-limited, must be valid JSON,
@@ -103,10 +76,12 @@ type fleet struct {
 	states   []peerState
 }
 
-func newFleet(peers []peer, interval time.Duration) *fleet {
+// The hub fetches each peer at most once per interval, so a history the size
+// of its own holds the whole window for every peer.
+func newFleet(peers []peer, interval, window time.Duration) *fleet {
 	f := &fleet{peers: peers, interval: interval, states: make([]peerState, len(peers))}
 	for i, p := range peers {
-		f.states[i].Peer = p
+		f.states[i] = peerState{Peer: p, hist: newHistory(window, interval)}
 	}
 	// Short timeout: an unreachable peer must not hold up the others, and the
 	// next poll is only one interval away.
@@ -133,45 +108,52 @@ func (f *fleet) poll(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s, raw, err := f.fetch(ctx, p)
+			s, raw, age, err := f.fetch(ctx, p)
 			f.mu.Lock()
 			defer f.mu.Unlock()
+			st := &f.states[i]
 			if err != nil {
-				f.states[i].Error = err.Error()
+				st.Error = err.Error()
 				return
 			}
-			f.states[i] = peerState{Peer: p, Sample: s, Raw: raw, LastSeen: time.Now()}
+			// A peer sampling slower than we poll returns the same sample
+			// twice; only a newer one is a new chart point.
+			if s.SampledAt.After(st.hist.last()) {
+				st.hist.add(sampleFromAPI(s))
+			}
+			st.Sample, st.Raw, st.LastSeen, st.Age, st.Error = s, raw, time.Now(), age, ""
 		}()
 	}
 	wg.Wait()
 }
 
-func (f *fleet) fetch(ctx context.Context, p peer) (*peerSample, json.RawMessage, error) {
+func (f *fleet) fetch(ctx context.Context, p peer) (*apiSample, json.RawMessage, time.Duration, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", p.URL+"api/sample.json", nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	req.Header.Set("User-Agent", "PiPeek/"+buildVersion())
 	res, err := f.client.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("not reachable")
+		return nil, nil, 0, fmt.Errorf("not reachable")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("answered %s", res.Status)
+		return nil, nil, 0, fmt.Errorf("answered %s", res.Status)
 	}
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxPeerResponse+1))
 	if err != nil {
-		return nil, nil, fmt.Errorf("not reachable")
+		return nil, nil, 0, fmt.Errorf("not reachable")
 	}
 	if len(body) > maxPeerResponse {
-		return nil, nil, fmt.Errorf("answer too large")
+		return nil, nil, 0, fmt.Errorf("answer too large")
 	}
-	var s peerSample
+	var s apiSample
 	if err := json.Unmarshal(body, &s); err != nil || s.SampledAt.IsZero() {
-		return nil, nil, fmt.Errorf("not a PiPeek")
+		return nil, nil, 0, fmt.Errorf("not a PiPeek")
 	}
-	return &s, json.RawMessage(body), nil
+	ms, _ := strconv.ParseInt(res.Header.Get("X-PiPeek-Sample-Age"), 10, 64)
+	return &s, json.RawMessage(body), time.Duration(max(ms, 0)) * time.Millisecond, nil
 }
 
 func (f *fleet) snapshot() []peerState {
@@ -200,8 +182,8 @@ type hostCard struct {
 
 // A peer counts as offline once its last good sample is older than three of
 // our intervals, the same rule /healthz uses for this machine.
-func peerCard(st peerState, now time.Time, interval time.Duration) hostCard {
-	c := hostCard{Name: st.Peer.Name, URL: st.Peer.URL, TempClass: "unavailable"}
+func peerCard(st peerState, base string, now time.Time, interval time.Duration) hostCard {
+	c := hostCard{Name: st.Peer.Name, URL: base + "hosts/" + st.Peer.Name, TempClass: "unavailable"}
 	if st.Sample == nil {
 		c.Status, c.Reason = "Never reached", st.Error
 		return c

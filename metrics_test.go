@@ -109,8 +109,8 @@ func TestHistoryBoundAndGaps(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		a.update(sample{At: now.Add(time.Duration(i) * time.Second), CPU: 50, CPUOK: true})
 	}
-	if a.count != 11 || len(a.points) != 11 {
-		t.Fatalf("unbounded history: %d %d", a.count, len(a.points))
+	if a.hist.count != 11 || len(a.hist.points) != 11 {
+		t.Fatalf("unbounded history: %d %d", a.hist.count, len(a.hist.points))
 	}
 	a.update(sample{At: now.Add(time.Hour)})
 	if !strings.Contains(string(a.fragment), "1 samples in memory") {
