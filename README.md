@@ -24,6 +24,9 @@ JavaScript build, nothing pulled from a CDN.
   (`-mounts`). Ten minutes of charts fit in a fixed amount of memory.
 - **It sits behind your nginx.** It only listens on localhost by default, works
   under a sub-path like `/pipeek/`, and comes with nginx and systemd configs.
+- **Several Pis, one dashboard.** One Pi can act as the [hub](#several-pis-in-one-view-hub-mode)
+  for the others: a card per Pi at the top, and the full dashboard of
+  whichever you click.
 - **It's quiet.** One sample per interval, however many browser tabs are open.
   A hidden tab stops polling. `/healthz` is there for uptime checks, and
   [`/api/sample.json`](#json-api) for scripts and home automation.
@@ -172,7 +175,7 @@ Escalation is immediate. On cooling, a status steps down only below 58°C, 68°C
 -disks        /                Comma-separated filesystem paths
 -mounts       (none)           Required mount points, added to monitored disks
 -interfaces   (automatic)      Comma-separated names, e.g. eth0,wlan0
--peers       (none)           Other PiPeeks for the overview: name=url,name=url
+-peers       (none)           Hub mode: other PiPeeks to show, name=url,name=url (see below)
 -version                       Print the version and exit
 ```
 
@@ -221,48 +224,140 @@ in milliseconds.
 
 `/metrics` is the dashboard's HTML fragment, not a Prometheus endpoint.
 
-## Several Pis in one view
+## Several Pis in one view (hub mode)
 
-Run PiPeek on every Pi as usual. On the one you want to look at, list the
-others with `-peers`, giving each a name and its dashboard address:
+If you have more than one Pi, pick one as the **hub**. It shows every Pi in
+one dashboard: a row of cards at the top, one per Pi, and below it the full
+dashboard of the Pi you clicked. The other Pis, the **peers**, only provide
+their data.
+
+![The hub showing three Pis, with "garage" selected](docs/hub.png)
+
+### How it works
+
+- Every Pi runs PiPeek as usual. The peers need no special setup: the hub
+  reads the [`/api/sample.json`](#json-api) every PiPeek already serves.
+- The hub fetches each peer once per interval (3 seconds by default), with a
+  short timeout, so one Pi that's down never delays the others.
+- Each card shows CPU, memory and temperature, and flags under-voltage, a
+  missing disk, a pending restart or warnings. The selected card is
+  highlighted, and everything below it is that Pi's data, at `/hosts/<name>`
+  on the hub, with ten minutes of charts the hub collects itself.
+- A Pi that stops answering turns red with the time it was last seen; its page
+  keeps the last values under a notice.
+- Only the hub has to be reachable from your browser. The peers only have to
+  answer the hub.
+- Cost: a few MB more memory on the hub than a single PiPeek. A peer's page is
+  only drawn while someone has it open.
+
+Peers need PiPeek v0.3.0 or newer (the first version with the JSON API). Newer
+peers show more: the restart status needs v0.3.1.
+
+### Set it up with Tailscale
+
+Tailscale is the easiest way: the connections are encrypted and private to
+your tailnet, and PiPeek itself stays on localhost.
+
+**1. On every Pi, install PiPeek:**
 
 ```sh
-pipeek -listen 127.0.0.1:8080 -peers pi3=https://pi3.example.ts.net:8443,bolt=https://raspibolt.example.ts.net:8443
+curl -fsSL https://raw.githubusercontent.com/leue21/pipeek/main/scripts/install.sh | sh
 ```
 
-That PiPeek, the hub, then shows an **All machines** row at the top of its
-page: CPU, memory and temperature for each Pi, plus under-voltage, a missing
-disk, a pending restart and warnings when there are any. A Pi that stops
-answering is marked offline with the time it was last seen.
+If the installer says another program already uses port 8080, move PiPeek to a
+free port first (see [Troubleshooting](#troubleshooting-the-hub)).
 
-The hub is the one dashboard for all of them. Click a card and it stays
-highlighted while everything below it shows that Pi's data, at
-`/hosts/<name>`: the same cards and ten minutes of charts, built from what
-the hub fetches. Click the hub's own card to go back to it. Only the hub needs
-to be reachable from your browser; the other Pis only have to answer the hub. If a Pi stops answering, its page keeps showing
-the last sample, marked as such.
-
-The hub fetches each peer's [`/api/sample.json`](#json-api) once per
-interval, with a short timeout, so a dead peer never delays the others. A
-peer's page is only drawn while someone has it open. The
-peers need nothing new, and the hub costs a few MB of memory more than a
-single PiPeek. `/api/fleet.json` on the hub has every machine's sample in one
-document, which is what the [alert script](#alerts-on-your-phone) reads to
-watch all of them.
-
-The hub must be able to reach each peer's dashboard. Over Tailscale, the
-simplest way is to serve each PiPeek on the tailnet:
+**2. On every peer, make PiPeek reachable on your tailnet:**
 
 ```sh
 sudo tailscale serve --bg --https=8443 http://127.0.0.1:8080
+tailscale serve status    # must say "(tailnet only)"
 ```
 
-That keeps PiPeek on localhost, adds HTTPS, and only devices on your tailnet
-can reach it. The peers' data is then visible to anyone who can open the hub;
-see [Security](#security-who-can-see-what).
+Use the port PiPeek really listens on (the installer prints it). If 8443 is
+already served by something else on that Pi (check `tailscale serve status`
+first), pick another HTTPS port, such as 10443. Running the command again
+replaces whatever 8443 pointed to before.
 
-To set `-peers` on an installed service, run `sudo systemctl edit pipeek` and
-add the full command line, as in [systemd](#systemd).
+**3. On the hub, list the peers.** Each entry is `name=address`: the name is
+what the card shows (letters, digits, `.`, `-`, `_`), and the address is the
+peer's dashboard URL, with its `-base-path` if it has one.
+
+```sh
+sudo systemctl edit pipeek
+```
+
+Add the hub's full command line, keeping any options it already has:
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/pipeek -listen 127.0.0.1:8080 -peers garage=https://garage.example.ts.net:8443,office=https://office.example.ts.net:8443
+```
+
+Find each peer's address with `tailscale status` (the machine name) and your
+tailnet's domain, as `https://<machine>.<tailnet>.ts.net:<port>`. The empty
+`ExecStart=` line is required; it clears the original command. Then:
+
+```sh
+sudo systemctl restart pipeek
+```
+
+**4. On the hub, check it.** Open the hub's dashboard and you should see one
+card per Pi within a few seconds. From a shell:
+
+```sh
+curl -s http://127.0.0.1:8080/api/fleet.json | jq -c '.hosts[] | {name, online, error}'
+```
+
+Every Pi should say `"online":true`. To view the hub from your other devices,
+serve the hub on your tailnet the same way as in step 2.
+
+### Without Tailscale
+
+On a home network you trust, a peer can listen on its LAN address instead,
+for example `-listen 192.168.1.20:8080`, and the hub uses
+`garage=http://192.168.1.20:8080`. PiPeek has no login, so anyone on that
+network can then read the peer's data. Limit it with a firewall rule that only
+lets the hub's address reach that port, or prefer Tailscale or nginx with
+authentication ([nginx](#nginx)).
+
+### Troubleshooting the hub
+
+The card of a Pi that isn't working says why:
+
+| Card says | Meaning | Fix |
+|---|---|---|
+| `not reachable` | The hub can't connect, or the Pi doesn't answer within the timeout. | Is the Pi on and in the tailnet (`tailscale ping <machine>`)? Is the address and port in `-peers` right? |
+| `answered 404 Not Found` | Something answers, but there's no PiPeek JSON at that address. | Check the port, and add the peer's `-base-path` to its address if it uses one. A peer older than v0.3.0 has no JSON API; update it. |
+| `answered 400 Bad Request` | Usually `tailscale serve` forwards to a port that belongs to another program, often one that speaks HTTPS. | On the peer, check `sudo ss -ltnp` for who owns the port, move PiPeek to a free one, and point `tailscale serve` at it. |
+| `not a PiPeek` | The address answers with something that isn't a PiPeek sample. | Same as above: the address or port leads to another program. |
+| `Never reached` | The hub has not had a single good answer since it started. | One of the above; the card shows which. |
+
+When the installer reports that PiPeek doesn't stay running, its log usually
+says `address already in use`: another program owns PiPeek's port. Pick a free
+port with `sudo systemctl edit pipeek`:
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/pipeek -listen 127.0.0.1:8090
+```
+
+Then `sudo systemctl restart pipeek`, and use that port in `tailscale serve`.
+
+### Alerts for every Pi
+
+[`contrib/pipeek-alert.sh`](#alerts-on-your-phone) on the hub, pointed at
+`api/fleet.json`, watches all Pis with one job, including Pis that stop
+answering.
+
+### Security
+
+The hub shows each peer's data to anyone who can open the hub, so it needs the
+same protection as any PiPeek: see [Security](#security-who-can-see-what). Peer
+answers are treated as untrusted: limited in size, checked to be a PiPeek
+sample, and escaped before they are shown.
 
 ## Alerts on your phone
 
