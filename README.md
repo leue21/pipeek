@@ -13,9 +13,11 @@ JavaScript build, nothing pulled from a CDN.
 
 ## Why PiPeek?
 
-- **It's small.** One ~8 MB binary with the HTML, CSS and HTMX built in. No
-  Node, Python, Docker or Go dependencies, and no time-series database to look
-  after. Runs on every Pi down to the original Zero.
+- **It's light.** About 11 MB of memory and well under 0.1% of one CPU core in
+  a test on arm64 Linux ([measurements](docs/validation.md)). One ~8 MB binary with
+  the HTML, CSS and HTMX built in: no Node, Python, Docker or Go dependencies,
+  and no time-series database to look after. Runs on every Pi down to the
+  original Zero.
 - **It's made for a Pi.** It reads the Pi's `cpu-thermal` sensor and colors the
   temperature by how hot it is, can warn you when a USB drive is unplugged
   (`-mounts`), and keeps ten minutes of charts in a fixed amount of memory.
@@ -26,7 +28,19 @@ JavaScript build, nothing pulled from a CDN.
 
 ## Quickstart
 
-On 64-bit Raspberry Pi OS:
+Install it as a service with one command. It picks the right build for your
+Pi, checks its checksum, and starts PiPeek on `127.0.0.1:8080`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/leue21/pipeek/main/scripts/install.sh | sh
+```
+
+Run the same command again to upgrade; your `systemctl edit` settings are
+kept. [The script](scripts/install.sh) is short, so read it first if you
+prefer. `PIPEEK_VERSION=v0.2.0` installs a specific release, and
+`PIPEEK_NO_SERVICE=1` installs only the binary.
+
+Or just try it without installing anything, on 64-bit Raspberry Pi OS:
 
 ```sh
 curl -sSLO https://github.com/leue21/pipeek/releases/latest/download/pipeek_linux_arm64.tar.gz
@@ -62,7 +76,8 @@ download the newest version. Run `pipeek -version` to see which one you have.
 `SHA256SUMS` in each release has the checksum of every archive; check a
 download with `sha256sum -c SHA256SUMS --ignore-missing`.
 
-To install it as a service:
+To install a downloaded archive as a service by hand (this is what the
+install script does):
 
 ```sh
 cd pipeek_linux_arm64
@@ -234,6 +249,11 @@ An optional browser regression check is available at `scripts/browser-check.cjs`
 Tests cover required mount disappearance/recovery, filesystem replacement, graceful shutdown and deadlines, sample freshness, counter deltas/resets, missing metrics, memory accounting, interface selection, bounded history, concurrent readers, escaping, and reverse-proxy routes at root and nested prefixes. Measure resident memory and CPU on your target Pi; the Go runtime, kernel, configured mounts, interfaces, and clients affect the footprint. Benchmarks are not a hardware-independent resource guarantee.
 
 HTMX 2.0.10 is pinned and embedded under `web/vendor`, following its [local installation documentation](https://htmx.org/docs/). Its license is included in [web/vendor/HTMX-LICENSE](web/vendor/HTMX-LICENSE).
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome; see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

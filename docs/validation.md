@@ -3,7 +3,7 @@
 Test environment: Linux arm64, Go 1.26.5. Default 3-second sampling, 10-minute history, root filesystem, automatic interface selection.
 
 - `go test ./...` and `go vet ./...`: passed. Includes counter resets, missing metrics, memory accounting, interface filters, ring retention, chart gaps, concurrent HTTP readers, escaping, and root/nested reverse proxy paths.
-- `go test -race ./...`: could not execute on this host. ThreadSanitizer reports `unsupported VMA range`, found 47 / supported 48. The race check remains outstanding on a compatible host.
+- `go test -race ./...`: could not execute on this host. ThreadSanitizer reports `unsupported VMA range`, found 47 / supported 48. The race check remains outstanding on a compatible host. Since November 2026, CI runs `make test-race` on every push and pull request (GitHub Actions, linux/amd64).
 - Statically linked Linux arm64, ARMv7, and ARMv6 builds: compiled successfully. ARMv6/v7 execution was not tested on those devices.
 - nginx 1.26.3: both supplied configurations passed `nginx -t` with local test ports/log paths. Actual HTTP and browser checks passed through a temporary nginx server at `/` and `/pipeek/`.
 - systemd: the supplied unit passed `systemd-analyze verify` using the local build path for ExecStart. The service was subsequently installed, enabled on boot, and verified through its HTTPS reverse proxy.

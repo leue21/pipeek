@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest a metric, setting or improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to see?
+      description: What you want to know at a glance that PiPeek doesn't show you yet, or what's awkward today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could it work?
+      description: Optional. Where the data comes from (a /proc or /sys file, a command), or how you imagine it on the page.
+  - type: markdown
+    attributes:
+      value: |
+        PiPeek aims to stay a single small binary with no dependencies, no database and no JavaScript build. Ideas that fit within that are the easiest to accept.

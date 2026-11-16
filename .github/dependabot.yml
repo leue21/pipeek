@@ -1,0 +1,11 @@
+# PiPeek has no Go dependencies, so only the GitHub Actions used in CI and
+# releases need watching. One pull request a month, with every update in it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
