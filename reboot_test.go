@@ -43,7 +43,7 @@ func TestCheckReboot(t *testing.T) {
 	touch(boot, "vmlinuz-6.18.50+rpt-rpi-2712", "")
 	touch(boot, "vmlinuz-6.18.60+rpt-rpi-2712", "")
 	touch(boot, "vmlinuz-6.18.70+rpt-rpi-v8", "")
-	if r := checkReboot(boot, run, running); !r.Known || r.Required {
+	if r := checkReboot(boot, run, running); !r.Known || r.Required || r.Running != running {
 		t.Fatalf("running the newest: %+v", r)
 	}
 	touch(boot, "vmlinuz-6.18.70+rpt-rpi-2712", "")

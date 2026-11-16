@@ -139,7 +139,7 @@ For packaging or testing without changing the host, use `make install DESTDIR=/t
 - Memory usage based on `MemTotal - MemAvailable`, plus swap.
 - CPU temperature when a recognized Linux CPU thermal zone is exposed (including Raspberry Pi `cpu-thermal` and `bcm2835_thermal`). Missing sensors show an em dash.
 - Raspberry Pi under-voltage: the power supply status, a banner while under-voltage is happening, and when it was last seen since PiPeek started. Read from the kernel's `rpi_volt` monitor, so it needs no root access or `vcgencmd`. Boards without it don't show the row.
-- Whether a restart is needed: a newer kernel of the running kind is installed in `/boot` than the one running, or a package update created `/run/reboot-required` (Debian, Ubuntu). Checked once a minute. Services that need restarting after a library update (what `needrestart` reports) aren't shown, because finding them requires root.
+- Whether a restart is needed, with the running kernel version: a newer kernel of the running kind is installed in `/boot` than the one running, or a package update created `/run/reboot-required` (Debian, Ubuntu). Checked once a minute. This compares against what is installed, not what has been released: it doesn't check for updates. Services that need restarting after a library update (what `needrestart` reports) aren't shown, because finding them requires root.
 - Fan speed, when the kernel exposes a fan sensor (for example the Raspberry Pi 5 active cooler).
 - Disk usage and available space for configured paths, plus read and write rates for filesystems on a block device (SD card, USB drive, NVMe). tmpfs, overlay and network mounts have no rates. Defaults to the root filesystem; add required mount points with `-mounts /mnt/data`. The percentage matches `df`'s treatment of reserved blocks: used / (used + available).
 - Per-interface receive/send rates and their sum. Loopback is excluded by default. Bridges, virtual interfaces, and their underlying interfaces may count the same traffic; select physical interfaces for host traffic totals.
@@ -201,7 +201,7 @@ curl -s http://127.0.0.1:8080/api/sample.json | jq '{cpu: .cpu.percent, temp: .t
   "memory": { "total_bytes": 4245618688, "used_bytes": 2246262784, "percent": 52.9, "swap_total_bytes": 2332491776, "swap_used_bytes": 850378752 },
   "temperature": { "celsius": 43, "status": "normal", "fan_rpm": null },
   "power": { "under_voltage": false, "under_voltage_last_seen": null },
-  "reboot": { "required": false, "reasons": [] },
+  "reboot": { "required": false, "reasons": [], "running_kernel": "6.18.60+rpt-rpi-2712" },
   "disks": [{ "path": "/", "ok": true, "total_bytes": 2016791396352, "used_bytes": 64561262592, "available_bytes": 1870282080256, "percent": 3.3, "read_bytes_per_second": 438614.8, "write_bytes_per_second": 1358335.1 }],
   "network": { "rx_bytes_per_second": 5220.7, "tx_bytes_per_second": 4930.5, "interfaces": [{ "name": "eth0", "rx_bytes_per_second": 1574.8, "tx_bytes_per_second": 1284.7 }] },
   "warnings": []

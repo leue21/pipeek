@@ -23,6 +23,7 @@ const rebootCheckEvery = time.Minute
 type rebootStatus struct {
 	Known, Required bool
 	Reasons         []string
+	Running         string // the running kernel release, when known
 }
 
 func (c *collector) collectReboot(s *sample, now time.Time) {
@@ -38,7 +39,7 @@ func (c *collector) collectReboot(s *sample, now time.Time) {
 }
 
 func checkReboot(boot, run, running string) rebootStatus {
-	var r rebootStatus
+	r := rebootStatus{Running: running}
 	if running != "" {
 		images, _ := filepath.Glob(filepath.Join(boot, "vmlinuz-*"))
 		newest := ""

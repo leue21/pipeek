@@ -151,7 +151,7 @@ func TestSampleJSON(t *testing.T) {
 	if power["under_voltage"] != false || power["under_voltage_last_seen"] != "2026-11-16T12:00:00Z" {
 		t.Fatalf("power: %v", power)
 	}
-	if reboot := doc["reboot"].(map[string]any); reboot["required"] != nil || len(reboot["reasons"].([]any)) != 0 {
+	if reboot := doc["reboot"].(map[string]any); reboot["required"] != nil || len(reboot["reasons"].([]any)) != 0 || reboot["running_kernel"] != nil {
 		t.Fatalf("unknown reboot status must be null with no reasons: %v", reboot)
 	}
 	if doc["memory"] != nil || doc["host"] != "rpi5" || doc["sampled_at"] != "2026-11-16T12:00:03Z" {
