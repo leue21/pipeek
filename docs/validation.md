@@ -24,3 +24,16 @@ The Catppuccin Mocha update also passed browser checks for palette colors, theme
 - In an isolated Linux mount namespace, unmounting a temporary test filesystem changed `/healthz` from 200 to 503. The host's mounts were not changed.
 - Linux ARMv6 and ARMv7 builds compiled successfully; native Linux arm64 was built and deployed.
 - The race detector limitation described above remains unresolved.
+
+## Pi readings and JSON API — 2026-11-16
+
+Raspberry Pi 5 Model B (4 GB), Raspberry Pi OS 64-bit, kernel 6.18. The new build (load average, CPU frequency, fan, under-voltage, disk I/O rates and `/api/sample.json`) ran next to the v0.2.0 service, with both polled every 3 seconds as an open browser tab would, for 60 seconds:
+
+| Build | Resident memory | CPU (one core) |
+|---|---|---|
+| v0.2.0 | 13.5 MB | 0.12% |
+| New readings | 14.5 MB | 0.08% |
+
+The CPU difference is within measurement noise (both are a handful of clock ticks over the minute). The stripped arm64 binary grew from 8,061,090 to 8,126,626 bytes. All readings come from `/proc` and `/sys` with ordinary read access; the service's sandbox (`DynamicUser`, `ProtectSystem=strict`) is unchanged. The full Raspberry Pi throttling flags (`vcgencmd get_throttled`) need root access to `/dev/vcio` and are deliberately not read.
+
+Verified on the device: CPU frequency 1.7 of 2.4 GHz, load average, under-voltage monitor (`rpi_volt`, reading OK), and read/write rates for the root filesystem on a USB SSD and for a USB hard drive. This board has no fan sensor, so the fan reading is absent, as intended.

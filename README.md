@@ -13,18 +13,20 @@ JavaScript build, nothing pulled from a CDN.
 
 ## Why PiPeek?
 
-- **It's light.** About 11 MB of memory and well under 0.1% of one CPU core in
-  a test on arm64 Linux ([measurements](docs/validation.md)). One ~8 MB binary with
+- **It's light.** About 14 MB of memory and around 0.1% of one CPU core on a
+  Raspberry Pi 5, with a browser tab open ([measurements](docs/validation.md)). One ~8 MB binary with
   the HTML, CSS and HTMX built in: no Node, Python, Docker or Go dependencies,
   and no time-series database to look after. Runs on every Pi down to the
   original Zero.
-- **It's made for a Pi.** It reads the Pi's `cpu-thermal` sensor and colors the
-  temperature by how hot it is, can warn you when a USB drive is unplugged
-  (`-mounts`), and keeps ten minutes of charts in a fixed amount of memory.
+- **It's made for a Pi.** It warns you when the power supply can't keep up
+  (under-voltage), shows the CPU clock next to its maximum, colors the
+  temperature by how hot it is, and can warn you when a USB drive is unplugged
+  (`-mounts`). Ten minutes of charts fit in a fixed amount of memory.
 - **It sits behind your nginx.** It only listens on localhost by default, works
   under a sub-path like `/pipeek/`, and comes with nginx and systemd configs.
 - **It's quiet.** One sample per interval, however many browser tabs are open.
-  A hidden tab stops polling. `/healthz` is there for uptime checks.
+  A hidden tab stops polling. `/healthz` is there for uptime checks, and
+  [`/api/sample.json`](#json-api) for scripts and home automation.
 
 ## Quickstart
 
@@ -132,10 +134,13 @@ For packaging or testing without changing the host, use `make install DESTDIR=/t
 
 ## What it shows
 
-- Aggregate CPU utilization, excluding idle and I/O wait.
+- Aggregate CPU utilization, excluding idle and I/O wait, with the current CPU clock next to its maximum. A clock below the maximum is normal when the CPU is idle; under load next to a high temperature, it means the CPU is being slowed down.
+- Load average over 1, 5 and 15 minutes.
 - Memory usage based on `MemTotal - MemAvailable`, plus swap.
 - CPU temperature when a recognized Linux CPU thermal zone is exposed (including Raspberry Pi `cpu-thermal` and `bcm2835_thermal`). Missing sensors show an em dash.
-- Disk usage and available space for configured paths. Defaults to the root filesystem; add required mount points with `-mounts /mnt/data`. The percentage matches `df`'s treatment of reserved blocks: used / (used + available).
+- Raspberry Pi under-voltage: the power supply status, a banner while under-voltage is happening, and when it was last seen since PiPeek started. Read from the kernel's `rpi_volt` monitor, so it needs no root access or `vcgencmd`. Boards without it don't show the row.
+- Fan speed, when the kernel exposes a fan sensor (for example the Raspberry Pi 5 active cooler).
+- Disk usage and available space for configured paths, plus read and write rates for filesystems on a block device (SD card, USB drive, NVMe). tmpfs, overlay and network mounts have no rates. Defaults to the root filesystem; add required mount points with `-mounts /mnt/data`. The percentage matches `df`'s treatment of reserved blocks: used / (used + available).
 - Per-interface receive/send rates and their sum. Loopback is excluded by default. Bridges, virtual interfaces, and their underlying interfaces may count the same traffic; select physical interfaces for host traffic totals.
 - Host uptime, ten minutes of CPU/memory/temperature/network history, light and [Catppuccin Mocha](https://catppuccin.com/palette/) dark themes, and a connection status indicator.
 
@@ -177,6 +182,57 @@ Browser requests time out after ten seconds and retry on the next refresh. Fresh
 The Go server uses HTTP timeouts and gracefully stops on SIGINT/SIGTERM. `GET /healthz` returns 200 for a fresh sample, 503 for stale or degraded core metrics. An absent optional temperature sensor does not mark it degraded. With `-base-path /pipeek/`, the health endpoint is `/pipeek/healthz`.
 
 Use local filesystem paths for predictable sampling latency; an unresponsive network mount can stall filesystem statistics. Run on the host to measure the host: container resource limits are not interpreted.
+
+## JSON API
+
+`GET /api/sample.json` (under `-base-path` if you use one) returns the latest
+sample, for scripts, Home Assistant or anything else that wants the numbers:
+
+```sh
+curl -s http://127.0.0.1:8080/api/sample.json | jq '{cpu: .cpu.percent, temp: .temperature.celsius, power: .power.under_voltage}'
+```
+
+```json
+{
+  "version": "v0.3.0", "host": "rpi5", "sampled_at": "2026-11-16T19:10:29Z", "interval_seconds": 3,
+  "uptime_seconds": 366164.2,
+  "cpu": { "percent": 4.9, "load": [0.55, 0.25, 0.14], "frequency_mhz": 1700, "max_frequency_mhz": 2400 },
+  "memory": { "total_bytes": 4245618688, "used_bytes": 2246262784, "percent": 52.9, "swap_total_bytes": 2332491776, "swap_used_bytes": 850378752 },
+  "temperature": { "celsius": 43, "status": "normal", "fan_rpm": null },
+  "power": { "under_voltage": false, "under_voltage_last_seen": null },
+  "disks": [{ "path": "/", "ok": true, "total_bytes": 2016791396352, "used_bytes": 64561262592, "available_bytes": 1870282080256, "percent": 3.3, "read_bytes_per_second": 438614.8, "write_bytes_per_second": 1358335.1 }],
+  "network": { "rx_bytes_per_second": 5220.7, "tx_bytes_per_second": 4930.5, "interfaces": [{ "name": "eth0", "rx_bytes_per_second": 1574.8, "tx_bytes_per_second": 1284.7 }] },
+  "warnings": []
+}
+```
+
+A value PiPeek couldn't read is `null`, not `0`, so a script can tell "no
+reading" from "zero": `fan_rpm` on a Pi without a fan, `under_voltage` on a
+machine that isn't a Pi, rates before the second sample. `temperature.status`
+is the same band the dashboard shows (`normal`, `warm`, `hot`, `very-hot`,
+`unavailable`). Times are UTC. The document is built once per sample, so
+polling it costs nothing extra; the `X-PiPeek-Sample-Age` header gives its age
+in milliseconds.
+
+`/metrics` is the dashboard's HTML fragment, not a Prometheus endpoint.
+
+## Alerts on your phone
+
+PiPeek shows problems but doesn't send them anywhere. [`contrib/pipeek-alert.sh`](contrib/pipeek-alert.sh)
+does, using [morse](https://github.com/leue21/morse) to message you on
+Telegram. It reports under-voltage, a hot or very hot CPU, PiPeek's own
+warnings (such as a required mount going missing), and PiPeek not answering.
+While a problem lasts it keeps one message up to date instead of sending a new
+one each time, and it deletes the message once everything is fine again.
+
+```sh
+# needs curl, jq and a configured morse
+crontab -e
+* * * * * PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin PIPEEK_URL=http://127.0.0.1:8080/api/sample.json /path/to/pipeek/contrib/pipeek-alert.sh
+```
+
+The first message notifies you; updates to it don't, because Telegram never
+notifies on edits.
 
 ## nginx
 

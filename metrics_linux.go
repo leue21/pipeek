@@ -20,6 +20,8 @@ type disk struct {
 	Total, Used, Available uint64
 	Percent                float64
 	OK                     bool
+	ReadRate, WriteRate    float64 // bytes per second
+	IOOK                   bool
 }
 type network struct {
 	Name   string
@@ -32,11 +34,20 @@ type sample struct {
 	CPUOK, TempOK, MemoryOK, UptimeOK bool
 	Memory                            memory
 	Uptime                            string
+	UptimeSeconds                     float64
 	Disks                             []disk
 	Networks                          []network
 	RX, TX                            float64
 	NetworkOK                         bool
 	Warnings                          []string
+	// Optional readings, from pi_linux.go.
+	FreqMHz, MaxFreqMHz     float64
+	FreqOK                  bool
+	FanRPM                  float64
+	FanOK                   bool
+	UnderVoltage, VoltageOK bool
+	Load                    [3]float64
+	LoadOK                  bool
 }
 type collector struct {
 	proc, sys      string
@@ -49,6 +60,12 @@ type collector struct {
 	tempPath       string
 	requiredMounts map[string]bool
 	diskIDs        map[string]syscall.Fsid
+	voltPath       string
+	fanPath        string
+	freqPaths      []string
+	discoveredAt   time.Time
+	io             map[string]ioCounters
+	ioAt           time.Time
 }
 
 func parseCPU(data string) (cpuCounters, error) {
@@ -162,6 +179,7 @@ func (c *collector) collect(now time.Time) sample {
 			seconds, e := strconv.ParseFloat(f[0], 64)
 			if e == nil && seconds >= 0 && !math.IsNaN(seconds) && !math.IsInf(seconds, 0) {
 				s.Uptime = formatUptime(seconds)
+				s.UptimeSeconds = seconds
 				s.UptimeOK = true
 			}
 		}
@@ -221,6 +239,8 @@ func (c *collector) collect(now time.Time) sample {
 		}
 		s.Disks = append(s.Disks, d)
 	}
+	c.collectDiskIO(&s, now)
+	c.collectPi(&s, now)
 	data, err = c.read("net/dev")
 	var nets map[string]netCounters
 	if err == nil {
