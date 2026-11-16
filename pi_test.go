@@ -151,6 +151,9 @@ func TestSampleJSON(t *testing.T) {
 	if power["under_voltage"] != false || power["under_voltage_last_seen"] != "2026-11-16T12:00:00Z" {
 		t.Fatalf("power: %v", power)
 	}
+	if reboot := doc["reboot"].(map[string]any); reboot["required"] != nil || len(reboot["reasons"].([]any)) != 0 || reboot["running_kernel"] != nil {
+		t.Fatalf("unknown reboot status must be null with no reasons: %v", reboot)
+	}
 	if doc["memory"] != nil || doc["host"] != "rpi5" || doc["sampled_at"] != "2026-11-16T12:00:03Z" {
 		t.Fatalf("doc: %s", body)
 	}
@@ -166,11 +169,12 @@ func TestSampleJSON(t *testing.T) {
 		t.Fatalf("recovered page: %s", page)
 	}
 	a.update(sample{At: at.Add(6 * time.Second), VoltageOK: true, UnderVoltage: true, FreqOK: true, FreqMHz: 1500, MaxFreqMHz: 2400, FanOK: true, FanRPM: 3100,
-		Disks: []disk{{Path: "/", OK: true, Total: 100, ReadRate: 2048, WriteRate: 0, IOOK: true}}})
+		Disks:  []disk{{Path: "/", OK: true, Total: 100, ReadRate: 2048, WriteRate: 0, IOOK: true}},
+		Reboot: rebootStatus{Known: true, Required: true, Reasons: []string{"Kernel 6.18.70 is installed; 6.18.60 is running"}}})
 	res, _ = http.Get(srv.URL + "/pipeek/metrics")
 	page, _ = io.ReadAll(res.Body)
 	res.Body.Close()
-	for _, want := range []string{"Under-voltage detected", "power-bad", "1.50 GHz", "of 2.40 GHz", "Fan 3100 rpm", "Read 2.0 KiB/s", "Write 0 B/s"} {
+	for _, want := range []string{"Under-voltage detected", "power-bad", "1.50 GHz", "of 2.40 GHz", "Fan 3100 rpm", "Read 2.0 KiB/s", "Write 0 B/s", "Restart", "Needed", "Kernel 6.18.70 is installed"} {
 		if !strings.Contains(string(page), want) {
 			t.Fatalf("page lacks %q", want)
 		}

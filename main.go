@@ -64,7 +64,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	c := &collector{proc: "/proc", sys: "/sys", disks: diskPaths, interfaces: selected, requiredMounts: requiredMounts}
+	c := &collector{proc: "/proc", sys: "/sys", bootDir: "/boot", runDir: "/run", disks: diskPaths, interfaces: selected, requiredMounts: requiredMounts}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	app.update(c.collect(time.Now()))
