@@ -37,3 +37,14 @@ Raspberry Pi 5 Model B (4 GB), Raspberry Pi OS 64-bit, kernel 6.18. The new buil
 The CPU difference is within measurement noise (both are a handful of clock ticks over the minute). The stripped arm64 binary grew from 8,061,090 to 8,126,626 bytes. All readings come from `/proc` and `/sys` with ordinary read access; the service's sandbox (`DynamicUser`, `ProtectSystem=strict`) is unchanged. The full Raspberry Pi throttling flags (`vcgencmd get_throttled`) need root access to `/dev/vcio` and are deliberately not read.
 
 Verified on the device: CPU frequency 1.7 of 2.4 GHz, load average, under-voltage monitor (`rpi_volt`, reading OK), and read/write rates for the root filesystem on a USB SSD and for a USB hard drive. This board has no fan sensor, so the fan reading is absent, as intended.
+
+## Hub mode — 2026-11-16
+
+Same Raspberry Pi 5. A hub with two peers (this Pi's own PiPeek through `tailscale serve` HTTPS, and an address that refuses connections) ran next to the single v0.3.1 service, both polled every 3 seconds for 60 seconds:
+
+| Build | Resident memory | CPU (one core) |
+|---|---|---|
+| v0.3.1, single | 13.7 MB | 0.15% |
+| Hub, 2 peers | 16.5 MB | 0.13% |
+
+The difference is mostly Go's HTTPS client. A PiPeek without `-peers` starts no poller. The binary grew from 8,126,626 to 8,650,914 bytes, because the HTTPS client is now compiled in. The unreachable peer showed as "Never reached" and did not delay the reachable one. The service sandbox already allows outgoing IPv4/IPv6, so the unit file is unchanged.

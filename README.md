@@ -38,7 +38,8 @@ curl -fsSL https://raw.githubusercontent.com/leue21/pipeek/main/scripts/install.
 ```
 
 Run the same command again to upgrade; your `systemctl edit` settings are
-kept. [The script](scripts/install.sh) is short, so read it first if you
+kept. It waits a few seconds to make sure PiPeek stays running, and tells you
+if another program already uses its port. [The script](scripts/install.sh) is short, so read it first if you
 prefer. `PIPEEK_VERSION=v0.2.0` installs a specific release, and
 `PIPEEK_NO_SERVICE=1` installs only the binary.
 
@@ -171,6 +172,7 @@ Escalation is immediate. On cooling, a status steps down only below 58°C, 68°C
 -disks        /                Comma-separated filesystem paths
 -mounts       (none)           Required mount points, added to monitored disks
 -interfaces   (automatic)      Comma-separated names, e.g. eth0,wlan0
+-peers       (none)           Other PiPeeks for the overview: name=url,name=url
 -version                       Print the version and exit
 ```
 
@@ -219,12 +221,50 @@ in milliseconds.
 
 `/metrics` is the dashboard's HTML fragment, not a Prometheus endpoint.
 
+## Several Pis in one view
+
+Run PiPeek on every Pi as usual. On the one you want to look at, list the
+others with `-peers`, giving each a name and its dashboard address:
+
+```sh
+pipeek -listen 127.0.0.1:8080 -peers pi3=https://pi3.example.ts.net:8443,bolt=https://raspibolt.example.ts.net:8443
+```
+
+That PiPeek, the hub, then shows an **All machines** row at the top of its
+page: CPU, memory and temperature for each Pi, plus under-voltage, a missing
+disk, a pending restart and warnings when there are any. Each card links to
+that Pi's own dashboard. A Pi that stops answering is marked offline with the
+time it was last seen.
+
+The hub fetches each peer's [`/api/sample.json`](#json-api) once per
+interval, with a short timeout, so a dead peer never delays the others. The
+peers need nothing new, and the hub costs a few MB of memory more than a
+single PiPeek. `/api/fleet.json` on the hub has every machine's sample in one
+document, which is what the [alert script](#alerts-on-your-phone) reads to
+watch all of them.
+
+The hub must be able to reach each peer's dashboard. Over Tailscale, the
+simplest way is to serve each PiPeek on the tailnet:
+
+```sh
+sudo tailscale serve --bg --https=8443 http://127.0.0.1:8080
+```
+
+That keeps PiPeek on localhost, adds HTTPS, and only devices on your tailnet
+can reach it. The peers' data is then visible to anyone who can open the hub;
+see [Security](#security-who-can-see-what).
+
+To set `-peers` on an installed service, run `sudo systemctl edit pipeek` and
+add the full command line, as in [systemd](#systemd).
+
 ## Alerts on your phone
 
 PiPeek shows problems but doesn't send them anywhere. [`contrib/pipeek-alert.sh`](contrib/pipeek-alert.sh)
 does, using [morse](https://github.com/leue21/morse) to message you on
 Telegram. It reports under-voltage, a hot or very hot CPU, PiPeek's own
 warnings (such as a required mount going missing), and PiPeek not answering.
+On a hub, point `PIPEEK_URL` at `api/fleet.json` and one job covers every Pi,
+including ones that stop answering.
 While a problem lasts it keeps one message up to date instead of sending a new
 one each time, and it deletes the message once everything is fine again.
 
