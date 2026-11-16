@@ -19,6 +19,7 @@ type apiSample struct {
 	Memory      *apiMemory     `json:"memory"`
 	Temperature apiTemperature `json:"temperature"`
 	Power       apiPower       `json:"power"`
+	Reboot      apiReboot      `json:"reboot"`
 	Disks       []apiDisk      `json:"disks"`
 	Network     apiNetwork     `json:"network"`
 	Warnings    []string       `json:"warnings"`
@@ -47,6 +48,11 @@ type apiPower struct {
 	UnderVoltage *bool `json:"under_voltage"`
 	// Last sample with under-voltage since PiPeek started; null if none.
 	UnderVoltageSeen *time.Time `json:"under_voltage_last_seen"`
+}
+type apiReboot struct {
+	// null when PiPeek cannot tell (no installed kernel to compare against).
+	Required *bool    `json:"required"`
+	Reasons  []string `json:"reasons"`
 }
 type apiDisk struct {
 	Path      string   `json:"path"`
@@ -98,6 +104,7 @@ func (a *app) apiJSON(s sample, status temperatureStatus, underVoltageSeen time.
 			UnderVoltage:     ptr(s.UnderVoltage, s.VoltageOK),
 			UnderVoltageSeen: ptr(underVoltageSeen.UTC(), !underVoltageSeen.IsZero()),
 		},
+		Reboot:   apiReboot{Required: ptr(s.Reboot.Required, s.Reboot.Known), Reasons: append([]string{}, s.Reboot.Reasons...)},
 		Disks:    []apiDisk{},
 		Network:  apiNetwork{RX: ptr(s.RX, s.NetworkOK), TX: ptr(s.TX, s.NetworkOK), Interfaces: []apiInterface{}},
 		Warnings: append([]string{}, s.Warnings...),

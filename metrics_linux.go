@@ -48,6 +48,7 @@ type sample struct {
 	UnderVoltage, VoltageOK bool
 	Load                    [3]float64
 	LoadOK                  bool
+	Reboot                  rebootStatus
 }
 type collector struct {
 	proc, sys      string
@@ -66,6 +67,10 @@ type collector struct {
 	discoveredAt   time.Time
 	io             map[string]ioCounters
 	ioAt           time.Time
+	bootDir        string
+	runDir         string
+	rebootAt       time.Time
+	reboot         rebootStatus
 }
 
 func parseCPU(data string) (cpuCounters, error) {
@@ -241,6 +246,7 @@ func (c *collector) collect(now time.Time) sample {
 	}
 	c.collectDiskIO(&s, now)
 	c.collectPi(&s, now)
+	c.collectReboot(&s, now)
 	data, err = c.read("net/dev")
 	var nets map[string]netCounters
 	if err == nil {
