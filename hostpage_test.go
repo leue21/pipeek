@@ -64,20 +64,25 @@ func TestHostPages(t *testing.T) {
 	defer srv.Close()
 
 	_, overview := get(t, srv.URL+"/pipeek/")
-	if !strings.Contains(overview, `href="/pipeek/hosts/pi3"`) {
-		t.Fatal("overview card does not link to the hub's page for the peer")
+	if !strings.Contains(overview, `class="host-card host-selected" href="/pipeek/" aria-current="page"`) || !strings.Contains(overview, `class="host-card" href="/pipeek/hosts/pi3">`) {
+		t.Fatal("hub page: its own card must be the selected one, and pi3 must link to the hub's page for it")
 	}
 	code, page := get(t, srv.URL+"/pipeek/hosts/pi3")
-	for _, want := range []string{"PiPeek · pi3", "via rpi5", `href="/pipeek/">← All machines`, `href="` + peer.URL + `/">Open on pi3`,
+	for _, want := range []string{"PiPeek · pi3", "via rpi5", "ALL MACHINES",
+		`class="host-card host-selected" href="/pipeek/hosts/pi3" aria-current="page"`, `class="host-card" href="/pipeek/">`,
 		`hx-get="/pipeek/hosts/pi3/metrics"`, `data-sampled="` + strconv.FormatInt(start.Add(time.Second).UnixMilli(), 10), "30.0", "2 samples in memory"} {
 		if code != 200 || !strings.Contains(page, want) {
 			t.Fatalf("peer page lacks %q (status %d)", want, code)
 		}
 	}
-	if strings.Contains(page, "ALL MACHINES") || strings.Contains(page, "<i>evil") {
-		t.Fatal("peer page shows the overview or unescaped peer content")
+	if strings.Contains(page, "<i>evil") || strings.Count(page, "aria-current") != 1 {
+		t.Fatal("peer page: unescaped peer content, or not exactly one selected card")
 	}
 
+	// The refreshed fragment keeps the row and the selection too.
+	if _, frag := get(t, srv.URL+"/pipeek/hosts/pi3/metrics"); !strings.Contains(frag, `href="/pipeek/hosts/pi3" aria-current="page"`) {
+		t.Fatal("fragment lost the selected card")
+	}
 	res, err := http.Get(srv.URL + "/pipeek/hosts/pi3/metrics")
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +93,7 @@ func TestHostPages(t *testing.T) {
 	}
 
 	_, ghost := get(t, srv.URL+"/pipeek/hosts/ghost")
-	if !strings.Contains(ghost, "ghost has not answered yet: not reachable") || strings.Contains(ghost, "RESOURCE USAGE") {
+	if !strings.Contains(ghost, "ghost has not answered yet: not reachable") || strings.Contains(ghost, "RESOURCE USAGE") || !strings.Contains(ghost, `href="/pipeek/hosts/ghost" aria-current="page"`) {
 		t.Fatal("never-reached peer page")
 	}
 	if code, _ := get(t, srv.URL+"/pipeek/hosts/nobody"); code != 404 {

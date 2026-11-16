@@ -235,11 +235,11 @@ page: CPU, memory and temperature for each Pi, plus under-voltage, a missing
 disk, a pending restart and warnings when there are any. A Pi that stops
 answering is marked offline with the time it was last seen.
 
-Click a card to see that Pi's full dashboard on the hub, at `/hosts/<name>`:
-the same cards and ten minutes of charts, built from what the hub fetches.
-"← All machines" leads back, and "Open on <name> ↗" goes to the Pi's own
-page. Only the hub needs to be reachable from your browser; the other Pis
-only have to answer the hub. If a Pi stops answering, its page keeps showing
+The hub is the one dashboard for all of them. Click a card and it stays
+highlighted while everything below it shows that Pi's data, at
+`/hosts/<name>`: the same cards and ten minutes of charts, built from what
+the hub fetches. Click the hub's own card to go back to it. Only the hub needs
+to be reachable from your browser; the other Pis only have to answer the hub. If a Pi stops answering, its page keeps showing
 the last sample, marked as such.
 
 The hub fetches each peer's [`/api/sample.json`](#json-api) once per

@@ -50,6 +50,7 @@ type app struct {
 	hist              *history
 	temperatureStatus temperatureStatus
 	underVoltageSeen  time.Time
+	self              hostCard // this machine's latest card, under mu
 }
 
 func newApp(base, host string, interval, history time.Duration) (*app, error) {
@@ -95,13 +96,28 @@ func (a *app) update(s sample) {
 	a.degraded = len(s.Warnings) > 0
 	a.mu.Unlock()
 }
+
+// hostCards is the overview row on this machine's own page.
 func (a *app) hostCards(s sample) []hostCard {
 	if a.fleet == nil {
 		return nil
 	}
-	cards := []hostCard{selfCard(s, a.host, a.base, a.temperatureStatus)}
-	for _, st := range a.fleet.snapshot() {
-		cards = append(cards, peerCard(st, a.base, s.At, a.interval))
+	self := selfCard(s, a.host, a.base, a.temperatureStatus)
+	a.mu.Lock()
+	a.self = self
+	a.mu.Unlock()
+	return overviewCards(self, a.fleet.snapshot(), "", a.base, s.At, a.interval)
+}
+
+// overviewCards lists this machine first, then the peers, and marks the one
+// the page shows: selected is a peer name, or "" for this machine.
+func overviewCards(self hostCard, states []peerState, selected, base string, now time.Time, interval time.Duration) []hostCard {
+	self.Selected = selected == ""
+	cards := []hostCard{self}
+	for _, st := range states {
+		c := peerCard(st, base, now, interval)
+		c.Selected = st.Peer.Name == selected
+		cards = append(cards, c)
 	}
 	return cards
 }
