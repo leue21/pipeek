@@ -277,6 +277,9 @@ crontab -e
 The first message notifies you; updates to it don't, because Telegram never
 notifies on edits.
 
+In a Telegram group with topics, add `PIPEEK_ALERT_TOPIC=pipeek` (a topic
+name from morse's config, or its id) to keep the alerts in their own thread.
+
 ## Security: who can see what
 
 PiPeek has no login. Anyone who can open the dashboard or `/api/sample.json`
