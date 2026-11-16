@@ -22,6 +22,7 @@ func main() {
 	disks := flag.String("disks", "/", "comma-separated filesystem paths")
 	mounts := flag.String("mounts", "", "comma-separated required mount points; added to monitored disks")
 	interfaces := flag.String("interfaces", "", "comma-separated interfaces; default all except loopback")
+	peerList := flag.String("peers", "", "other PiPeeks to show in an overview: name=url,name=url")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -60,6 +61,10 @@ func main() {
 	if host == "" {
 		host = "Linux host"
 	}
+	peers, err := parsePeers(*peerList)
+	if err != nil {
+		log.Fatal(err)
+	}
 	app, err := newApp(prefix, host, *interval, *history)
 	if err != nil {
 		log.Fatal(err)
@@ -67,6 +72,10 @@ func main() {
 	c := &collector{proc: "/proc", sys: "/sys", bootDir: "/boot", runDir: "/run", disks: diskPaths, interfaces: selected, requiredMounts: requiredMounts}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if len(peers) > 0 {
+		app.fleet = newFleet(peers, *interval)
+		go app.fleet.run(ctx)
+	}
 	app.update(c.collect(time.Now()))
 	go func() {
 		ticker := time.NewTicker(*interval)

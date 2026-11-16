@@ -31,6 +31,7 @@ type view struct {
 	Count                                              int
 	History                                            string
 	UnderVoltageSeen                                   time.Time
+	Hosts                                              []hostCard
 }
 type app struct {
 	base, host        string
@@ -39,6 +40,8 @@ type app struct {
 	mu                sync.RWMutex
 	fragment          []byte
 	json              []byte
+	fleetJSON         []byte
+	fleet             *fleet // nil unless -peers is set
 	sampled           time.Time
 	degraded          bool
 	// History is owned exclusively by the sampling goroutine.
@@ -49,7 +52,7 @@ type app struct {
 }
 
 func newApp(base, host string, interval, history time.Duration) (*app, error) {
-	funcs := template.FuncMap{"bytes": func(n uint64) string { return formatBytes(float64(n)) }, "rate": formatBytes, "pct": percent, "f1": func(n float64) string { return fmt.Sprintf("%.1f", n) }, "unix": func(t time.Time) int64 { return t.UnixMilli() }, "f2": func(n float64) string { return fmt.Sprintf("%.2f", n) }, "freq": formatFrequency}
+	funcs := template.FuncMap{"bytes": func(n uint64) string { return formatBytes(float64(n)) }, "rate": formatBytes, "pct": percent, "f1": func(n float64) string { return fmt.Sprintf("%.1f", n) }, "unix": func(t time.Time) int64 { return t.UnixMilli() }, "f2": func(n float64) string { return fmt.Sprintf("%.2f", n) }, "freq": formatFrequency, "deref": func(p *float64) float64 { return *p }}
 	t, err := template.New("").Funcs(funcs).ParseFS(assets, "web/*.html")
 	if err != nil {
 		return nil, err
@@ -77,7 +80,7 @@ func (a *app) update(s sample) {
 	if s.VoltageOK && s.UnderVoltage {
 		a.underVoltageSeen = s.At
 	}
-	v := view{TemperatureStatus: a.temperatureStatus, UnderVoltageSeen: a.underVoltageSeen, Sample: s, Count: len(points), History: a.history.String(), NetworkScale: formatBytes(scale) + "/s"}
+	v := view{TemperatureStatus: a.temperatureStatus, UnderVoltageSeen: a.underVoltageSeen, Hosts: a.hostCards(s), Sample: s, Count: len(points), History: a.history.String(), NetworkScale: formatBytes(scale) + "/s"}
 	v.CPUChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.CPU, p.CPUOK })
 	v.MemoryChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.Memory, p.MemoryOK })
 	v.TempChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.Temperature, p.TempOK })
@@ -93,12 +96,32 @@ func (a *app) update(s sample) {
 		log.Printf("render api: %v", err)
 		return
 	}
+	var fleetDoc []byte
+	if a.fleet != nil {
+		states := a.fleet.snapshot()
+		fleetDoc, err = fleetJSON(doc, a.host, a.base, states, s.At, a.interval)
+		if err != nil {
+			log.Printf("render fleet: %v", err)
+			return
+		}
+	}
 	a.mu.Lock()
 	a.json = doc
+	a.fleetJSON = fleetDoc
 	a.fragment = buf.Bytes()
 	a.sampled = s.At
 	a.degraded = len(s.Warnings) > 0
 	a.mu.Unlock()
+}
+func (a *app) hostCards(s sample) []hostCard {
+	if a.fleet == nil {
+		return nil
+	}
+	cards := []hostCard{selfCard(s, a.host, a.base, a.temperatureStatus)}
+	for _, st := range a.fleet.snapshot() {
+		cards = append(cards, peerCard(st, s.At, a.interval))
+	}
+	return cards
 }
 func chart(points []point, now time.Time, window, interval time.Duration, scale float64, value func(point) (float64, bool)) string {
 	var b strings.Builder
@@ -192,6 +215,17 @@ func (a *app) handler() http.Handler {
 			return
 		}
 		w.Header().Set("X-PiPeek-Sample-Age", strconv.FormatInt(age, 10))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(b)
+	})
+	mux.HandleFunc("GET "+a.base+"api/fleet.json", func(w http.ResponseWriter, r *http.Request) {
+		a.mu.RLock()
+		b := a.fleetJSON
+		a.mu.RUnlock()
+		if b == nil {
+			http.Error(w, "no peers configured (-peers)", http.StatusNotFound)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(b)
 	})
