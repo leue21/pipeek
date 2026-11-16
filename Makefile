@@ -3,9 +3,12 @@
 GO ?= go
 SUDO ?=
 DESTDIR ?=
-LDFLAGS ?= -s -w
+# Stamped into the binary so `pipeek -version` names its release. Outside a
+# checkout there is no tag to find, and pipeek falls back to Go's build info.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
+LDFLAGS ?= -s -w -X main.version=$(VERSION)
 
-.PHONY: build test test-race install clean
+.PHONY: build test test-race release install clean
 
 # Go's build cache makes repeated builds inexpensive and tracks embedded assets.
 build:
@@ -14,6 +17,10 @@ build:
 test:
 	$(GO) test ./...
 	$(GO) vet ./...
+
+# Every release archive and SHA256SUMS, as the release workflow builds them.
+release:
+	GO=$(GO) scripts/build-release.sh $(VERSION) dist
 
 # Separate because some ARM kernels cannot run ThreadSanitizer.
 test-race:
@@ -35,4 +42,4 @@ install: build
 	fi
 
 clean:
-	rm -rf bin
+	rm -rf bin dist

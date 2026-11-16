@@ -1,0 +1,59 @@
+name: Bug report
+description: Something shows the wrong value, fails to start, or breaks in the browser.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead. A screenshot helps for anything on the dashboard.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The command line or systemd drop-in you run PiPeek with, and the steps to see the problem.
+      placeholder: |
+        pipeek -listen 127.0.0.1:8080 -mounts /mnt/data
+        1. Unplug the drive
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PiPeek version
+      description: Output of `pipeek -version`.
+      placeholder: pipeek v0.2.0
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS
+      description: Board, OS and the output of `uname -m`.
+      placeholder: Raspberry Pi 5, Raspberry Pi OS Bookworm 64-bit, aarch64
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: Only if the problem is in the page itself.
+      placeholder: Firefox 140 on Android
+  - type: dropdown
+    id: proxy
+    attributes:
+      label: How do you reach PiPeek?
+      options:
+        - Directly (-listen)
+        - nginx at the root of a hostname
+        - nginx under a sub-path (-base-path)
+        - Another reverse proxy
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `journalctl -u pipeek -n 50 --no-pager`, if relevant.
+      render: text
