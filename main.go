@@ -22,7 +22,12 @@ func main() {
 	disks := flag.String("disks", "/", "comma-separated filesystem paths")
 	mounts := flag.String("mounts", "", "comma-separated required mount points; added to monitored disks")
 	interfaces := flag.String("interfaces", "", "comma-separated interfaces; default all except loopback")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("pipeek", buildVersion())
+		return
+	}
 	if *interval < time.Second || *interval > time.Minute || *history < *interval || *history > 24*time.Hour || *history / *interval > 3600 {
 		log.Fatal("invalid interval/history: interval 1s–1m, history >= interval and <= 24h, maximum 3600 intervals")
 	}
@@ -80,7 +85,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("PiPeek listening on http://%s%s · sample %s · history %s", *listen, prefix, *interval, *history)
+	log.Printf("PiPeek %s listening on http://%s%s · sample %s · history %s", buildVersion(), *listen, prefix, *interval, *history)
 	if err := serveUntilCanceled(ctx, server, listener, 5*time.Second); err != nil {
 		log.Fatal(err)
 	}

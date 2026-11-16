@@ -1,3 +1,5 @@
+# Checks every push and pull request. release.yml runs the same tests, but only
+# once a tag is pushed, by which point a broken change is already on main.
 name: CI
 
 on:
@@ -13,9 +15,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      # gofmt -l prints the files it would change, and exits 0 either way.
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
       - run: make test
       - run: make test-race
-      - run: make build
+
+      # Build every release architecture here too, so a change that breaks one
+      # is found in its pull request rather than when a tag is pushed.
+      - name: Build every release platform
+        run: scripts/build-release.sh "ci-${GITHUB_SHA::7}" dist

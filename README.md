@@ -5,23 +5,85 @@
 [![Go version](https://img.shields.io/github/go-mod/go-version/leue21/pipeek)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A small, read-only Linux dashboard for a quick peek at your Raspberry Pi. Go serves HTML; locally bundled HTMX refreshes the metric cards. No database, frontend build, CDN requests, or Go dependencies.
+**A tiny live dashboard for your Raspberry Pi** — CPU, memory, temperature,
+disks and network in one browser tab. One static Go binary, no database, no
+JavaScript build, nothing pulled from a CDN.
 
 ![PiPeek with the Catppuccin Mocha theme](docs/dashboard.png)
 
-## Download
+## Why PiPeek?
 
-Prebuilt static binaries for Linux (`arm64`, `armv7`, `armv6`, `amd64`) are attached to each [release](https://github.com/leue21/pipeek/releases/latest). On 64-bit Raspberry Pi OS:
+- **It's small.** One ~8 MB binary with the HTML, CSS and HTMX built in. No
+  Node, Python, Docker or Go dependencies, and no time-series database to look
+  after. Runs on every Pi down to the original Zero.
+- **It's made for a Pi.** It reads the Pi's `cpu-thermal` sensor and colors the
+  temperature by how hot it is, can warn you when a USB drive is unplugged
+  (`-mounts`), and keeps ten minutes of charts in a fixed amount of memory.
+- **It sits behind your nginx.** It only listens on localhost by default, works
+  under a sub-path like `/pipeek/`, and comes with nginx and systemd configs.
+- **It's quiet.** One sample per interval, however many browser tabs are open.
+  A hidden tab stops polling. `/healthz` is there for uptime checks.
+
+## Quickstart
+
+On 64-bit Raspberry Pi OS:
 
 ```sh
-curl -fLo pipeek https://github.com/leue21/pipeek/releases/latest/download/pipeek-linux-arm64
-chmod +x pipeek
-./pipeek
+curl -sSLO https://github.com/leue21/pipeek/releases/latest/download/pipeek_linux_arm64.tar.gz
+tar -xzf pipeek_linux_arm64.tar.gz
+./pipeek_linux_arm64/pipeek -listen :8080
 ```
 
-## Build from source
+Then open `http://<pi-address>:8080/` from any device on your network. PiPeek
+has no login, so only listen on `:8080` on a network you trust; otherwise keep
+the default localhost listener behind [nginx](#nginx). To keep it running, see
+[systemd](#systemd).
 
-Requires Linux, Go 1.24 or newer, and Make to build. The resulting binary needs no Go installation, CGO, or companion asset files.
+## Install
+
+### Download a binary
+
+Every [release](https://github.com/leue21/pipeek/releases/latest) has a ready
+static binary for each Linux architecture. Each archive also contains the
+systemd unit and nginx configs from [`deploy/`](deploy).
+
+| Archive | For |
+|---|---|
+| `pipeek_linux_arm64.tar.gz` | 64-bit Raspberry Pi OS (Pi 3, 4, 5, Zero 2 W) |
+| `pipeek_linux_armv7.tar.gz` | 32-bit Raspberry Pi OS on a Pi 2 or newer |
+| `pipeek_linux_armv6.tar.gz` | Original Pi, Pi Zero and Zero W |
+| `pipeek_linux_amd64.tar.gz` | Any x86-64 Linux machine |
+
+`uname -m` tells you which one you need: `aarch64` → arm64, `armv7l` → armv7,
+`armv6l` → armv6, `x86_64` → amd64.
+
+The file names stay the same in every release, so the links above always
+download the newest version. Run `pipeek -version` to see which one you have.
+`SHA256SUMS` in each release has the checksum of every archive; check a
+download with `sha256sum -c SHA256SUMS --ignore-missing`.
+
+To install it as a service:
+
+```sh
+cd pipeek_linux_arm64
+sudo install -m 755 pipeek /usr/local/bin/pipeek
+sudo install -m 644 deploy/pipeek.service /etc/systemd/system/pipeek.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now pipeek
+```
+
+### Go
+
+```sh
+go install github.com/leue21/pipeek@latest
+```
+
+Installs the binary into `$(go env GOPATH)/bin`. Requires Go 1.24 or newer.
+
+### From source
+
+Requires Linux, Go 1.24 or newer, and Make. The resulting binary needs no Go
+installation, CGO, or companion asset files.
 
 ```sh
 git clone https://github.com/leue21/pipeek.git
@@ -42,6 +104,7 @@ Open `http://<pi-address>:8080/`. The default loopback listener is intended for 
 
 ```sh
 make build                 # Build a static binary at bin/pipeek (also the default)
+make release VERSION=v0.2.0 # Build every release archive into dist/
 make test                  # Run Go tests and go vet
 make test-race             # Run the race detector on a supported host with CGO
 make install SUDO=sudo     # Build and install the binary and systemd unit
@@ -87,6 +150,7 @@ Escalation is immediate. On cooling, a status steps down only below 58°C, 68°C
 -disks        /                Comma-separated filesystem paths
 -mounts       (none)           Required mount points, added to monitored disks
 -interfaces   (automatic)      Comma-separated names, e.g. eth0,wlan0
+-version                       Print the version and exit
 ```
 
 PiPeek collects once per interval even with no viewers. A fixed-size ring stores compact history, and the HTML fragment is rendered once per sample and shared by all viewers. The browser polls only while visible and refreshes immediately on return. SVG charts need no charting library. Static assets are cacheable for one day; dynamic pages and fragments use `Cache-Control: no-store`.
@@ -141,16 +205,21 @@ ExecStart=/usr/local/bin/pipeek -listen 127.0.0.1:8080 -base-path /pipeek/ -moun
 
 Then `sudo systemctl restart pipeek`. Configured paths must be accessible to the service user. The unit creates a private temporary directory, so avoid using `/tmp` as a host filesystem target. View logs with `journalctl -u pipeek`.
 
-## Cross-compile
+## Releasing
+
+Pushing a `v*` tag publishes a release. `.github/workflows/release.yml` runs
+the tests, builds every architecture with `scripts/build-release.sh`, creates
+the GitHub release with generated notes, and attaches the archives and
+`SHA256SUMS`. Don't create the release by hand first; the workflow creates it
+when it's missing. To publish an existing tag again, run the workflow manually
+with that tag (it uses `--clobber`, so this is safe).
 
 ```sh
-# 64-bit Raspberry Pi OS
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o bin/pipeek-linux-arm64 .
-# 32-bit Raspberry Pi OS, Pi 2 and newer
-CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags='-s -w' -o bin/pipeek-linux-armv7 .
-# Original Pi / Pi Zero with ARMv6
-CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -trimpath -ldflags='-s -w' -o bin/pipeek-linux-armv6 .
+git tag -a v0.2.0 -m "PiPeek v0.2.0" && git push origin v0.2.0
 ```
+
+`make release` builds the same archives locally into `dist/`, which is how to
+check a change to the script. CI builds every architecture on each pull request.
 
 ## Validate and measure
 
