@@ -9,11 +9,14 @@
 # Needs curl, jq and a configured morse. PIPEEK_URL points at the JSON endpoint;
 # include the -base-path prefix if you use one. On a hub (-peers), point it at
 # api/fleet.json instead, and one job covers every machine.
+# PIPEEK_ALERT_TOPIC posts into a topic of a Telegram group with topics: a
+# name from morse's config, or a topic id.
 
 set -eu
 
 url=${PIPEEK_URL:-http://127.0.0.1:8080/api/sample.json}
 label=${PIPEEK_ALERT_LABEL:-pipeek-$(hostname)}
+topic=${PIPEEK_ALERT_TOPIC:-}
 state=${XDG_STATE_HOME:-$HOME/.local/state}/pipeek-alert-$label
 
 # One line per problem; empty when all is well. Under-voltage and a hot CPU
@@ -44,7 +47,12 @@ fi
 
 if [ -n "$problems" ]; then
     # The first send notifies; later runs edit the same message silently.
-    morse send --track "$label" "$title" "$problems"
+    # The label remembers its topic, so the delete below needs no --topic.
+    if [ -n "$topic" ]; then
+        morse send --track "$label" --topic "$topic" "$title" "$problems"
+    else
+        morse send --track "$label" "$title" "$problems"
+    fi
     mkdir -p "$(dirname "$state")"
     touch "$state"
 elif [ -e "$state" ]; then
