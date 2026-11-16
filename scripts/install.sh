@@ -104,5 +104,7 @@ else
     say "enabled and started the pipeek service."
 fi
 
-say "done. PiPeek listens on 127.0.0.1:8080 (see 'systemctl cat pipeek')."
+# Report the address the service really uses: a drop-in may override -listen.
+listen=$(systemctl show pipeek -p ExecStart --value | sed -n 's/.*-listen[ =]\([^ ;]*\).*/\1/p')
+say "done. PiPeek listens on ${listen:-127.0.0.1:8080} (see 'systemctl cat pipeek')."
 say "To reach it from your network, put it behind nginx or run: sudo systemctl edit pipeek"
