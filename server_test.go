@@ -46,7 +46,7 @@ func TestDashboardThroughProxy(t *testing.T) {
 				}
 				if route.path == base {
 					body := string(b)
-					if strings.Contains(body, "<script>alert(1)") || !strings.Contains(body, `hx-get="`+base+`metrics"`) || !strings.Contains(body, `href="`+base+`assets/style.css?v=hosts-1"`) {
+					if strings.Contains(body, "<script>alert(1)") || !strings.Contains(body, `hx-get="`+base+`metrics"`) || !strings.Contains(body, `href="`+base+`assets/style.css?v=selected-1"`) {
 						t.Fatal("unsafe hostname or wrong prefix")
 					}
 				}

@@ -166,6 +166,7 @@ func (f *fleet) snapshot() []peerState {
 type hostCard struct {
 	Name, URL     string
 	Self, Online  bool
+	Selected      bool   // the machine whose data the page shows
 	Status        string // "Online", "Offline", "Never reached"
 	Since         time.Time
 	Reason        string

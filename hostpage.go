@@ -78,6 +78,9 @@ func statusFromClass(class string) temperatureStatus {
 // peerView builds the dashboard view of one peer. It reads the peer's
 // history, so it runs under the fleet's read lock.
 func (a *app) peerView(name string, now time.Time) (v view, st peerState, interval time.Duration, found bool) {
+	a.mu.RLock()
+	self := a.self
+	a.mu.RUnlock()
 	a.fleet.mu.RLock()
 	defer a.fleet.mu.RUnlock()
 	for _, s := range a.fleet.states {
@@ -89,6 +92,8 @@ func (a *app) peerView(name string, now time.Time) (v view, st peerState, interv
 	if !found {
 		return
 	}
+	// The overview row stays on every page, with this peer highlighted.
+	v.Hosts = overviewCards(self, a.fleet.states, name, a.base, now, a.interval)
 	interval = a.interval
 	if st.Sample == nil {
 		v.NoData = true
@@ -122,9 +127,8 @@ type pageData struct {
 	Interval, SampleAge    int64
 	Fragment               template.HTML
 	// Set on a peer's page on the hub.
-	Peer           bool
-	Hub, OriginURL string
-	BackURL        string
+	Peer bool
+	Hub  string
 }
 
 func (a *app) servePeer(w http.ResponseWriter, r *http.Request, fragmentOnly bool) {
@@ -156,7 +160,7 @@ func (a *app) servePeer(w http.ResponseWriter, r *http.Request, fragmentOnly boo
 		return
 	}
 	data := pageData{Base: a.base, Host: name, MetricsURL: a.base + "hosts/" + name + "/metrics", Interval: interval.Milliseconds(), SampleAge: age,
-		Fragment: template.HTML(frag.String()), Peer: true, Hub: a.host, OriginURL: st.Peer.URL, BackURL: a.base}
+		Fragment: template.HTML(frag.String()), Peer: true, Hub: a.host}
 	var buf bytes.Buffer
 	if err := a.templates.ExecuteTemplate(&buf, "index.html", data); err != nil {
 		http.Error(w, "Unable to render dashboard", 500)
