@@ -30,6 +30,7 @@ type view struct {
 	NetworkScale                                       string
 	Count                                              int
 	History                                            string
+	UnderVoltageSeen                                   time.Time
 }
 type app struct {
 	base, host        string
@@ -37,16 +38,18 @@ type app struct {
 	templates         *template.Template
 	mu                sync.RWMutex
 	fragment          []byte
+	json              []byte
 	sampled           time.Time
 	degraded          bool
 	// History is owned exclusively by the sampling goroutine.
 	points            []point
 	next, count       int
 	temperatureStatus temperatureStatus
+	underVoltageSeen  time.Time
 }
 
 func newApp(base, host string, interval, history time.Duration) (*app, error) {
-	funcs := template.FuncMap{"bytes": func(n uint64) string { return formatBytes(float64(n)) }, "rate": formatBytes, "pct": percent, "f1": func(n float64) string { return fmt.Sprintf("%.1f", n) }, "unix": func(t time.Time) int64 { return t.UnixMilli() }}
+	funcs := template.FuncMap{"bytes": func(n uint64) string { return formatBytes(float64(n)) }, "rate": formatBytes, "pct": percent, "f1": func(n float64) string { return fmt.Sprintf("%.1f", n) }, "unix": func(t time.Time) int64 { return t.UnixMilli() }, "f2": func(n float64) string { return fmt.Sprintf("%.2f", n) }, "freq": formatFrequency}
 	t, err := template.New("").Funcs(funcs).ParseFS(assets, "web/*.html")
 	if err != nil {
 		return nil, err
@@ -71,7 +74,10 @@ func (a *app) update(s sample) {
 		scale = math.Max(scale, math.Max(p.RX, p.TX))
 	}
 	a.temperatureStatus = nextTemperatureStatus(a.temperatureStatus, s.Temperature, s.TempOK)
-	v := view{TemperatureStatus: a.temperatureStatus, Sample: s, Count: len(points), History: a.history.String(), NetworkScale: formatBytes(scale) + "/s"}
+	if s.VoltageOK && s.UnderVoltage {
+		a.underVoltageSeen = s.At
+	}
+	v := view{TemperatureStatus: a.temperatureStatus, UnderVoltageSeen: a.underVoltageSeen, Sample: s, Count: len(points), History: a.history.String(), NetworkScale: formatBytes(scale) + "/s"}
 	v.CPUChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.CPU, p.CPUOK })
 	v.MemoryChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.Memory, p.MemoryOK })
 	v.TempChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.Temperature, p.TempOK })
@@ -82,7 +88,13 @@ func (a *app) update(s sample) {
 		log.Printf("render metrics: %v", err)
 		return
 	}
+	doc, err := a.apiJSON(s, a.temperatureStatus, a.underVoltageSeen)
+	if err != nil {
+		log.Printf("render api: %v", err)
+		return
+	}
 	a.mu.Lock()
+	a.json = doc
 	a.fragment = buf.Bytes()
 	a.sampled = s.At
 	a.degraded = len(s.Warnings) > 0
@@ -109,6 +121,12 @@ func chart(points []point, now time.Time, window, interval time.Duration, scale 
 		prev = p.At
 	}
 	return b.String()
+}
+func formatFrequency(mhz float64) string {
+	if mhz >= 1000 {
+		return fmt.Sprintf("%.2f GHz", mhz/1000)
+	}
+	return fmt.Sprintf("%.0f MHz", mhz)
 }
 func formatBytes(n float64) string {
 	units := []string{"B", "KiB", "MiB", "GiB", "TiB", "PiB"}
@@ -162,6 +180,19 @@ func (a *app) handler() http.Handler {
 		a.mu.RUnlock()
 		w.Header().Set("X-PiPeek-Sample-Age", strconv.FormatInt(age, 10))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(b)
+	})
+	mux.HandleFunc("GET "+a.base+"api/sample.json", func(w http.ResponseWriter, r *http.Request) {
+		a.mu.RLock()
+		b := a.json
+		age := max(int64(0), time.Since(a.sampled).Milliseconds())
+		a.mu.RUnlock()
+		if b == nil {
+			http.Error(w, "no sample yet", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("X-PiPeek-Sample-Age", strconv.FormatInt(age, 10))
+		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(b)
 	})
 	mux.HandleFunc("GET "+a.base+"healthz", func(w http.ResponseWriter, r *http.Request) {

@@ -32,7 +32,7 @@ jobs:
 
       # The install script is piped into sh on other people's machines.
       - name: shellcheck
-        run: shellcheck scripts/*.sh
+        run: shellcheck scripts/*.sh contrib/*.sh
 
       - run: make test
       - run: make test-race
