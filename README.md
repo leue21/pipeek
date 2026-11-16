@@ -237,6 +237,27 @@ crontab -e
 The first message notifies you; updates to it don't, because Telegram never
 notifies on edits.
 
+## Security: who can see what
+
+PiPeek has no login. Anyone who can open the dashboard or `/api/sample.json`
+sees everything it shows, including:
+
+- the hostname, network interface names (such as `tailscale0` or Docker
+  bridges) and the paths of monitored disks and mounts
+- the running kernel version and whether a restart is pending, which tells
+  someone roughly which security fixes are active
+- uptime, load, and how busy the CPU, disks and network are
+- the PiPeek version
+
+It never shows process names, users, IP addresses, file contents or logs, and
+it can't change anything: every endpoint is read-only.
+
+So treat the dashboard like a system status page and control who can reach
+it. By default PiPeek only listens on `127.0.0.1`. To view it from elsewhere,
+put it behind nginx with authentication and TLS (see below), or on a private
+network such as a VPN or Tailscale. Don't expose it to the internet without a
+login in front of it.
+
 ## nginx
 
 ### Dedicated hostname or root URL
