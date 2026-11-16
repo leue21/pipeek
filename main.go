@@ -73,7 +73,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if len(peers) > 0 {
-		app.fleet = newFleet(peers, *interval)
+		app.fleet = newFleet(peers, *interval, *history)
 		go app.fleet.run(ctx)
 	}
 	app.update(c.collect(time.Now()))

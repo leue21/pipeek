@@ -232,12 +232,19 @@ pipeek -listen 127.0.0.1:8080 -peers pi3=https://pi3.example.ts.net:8443,bolt=ht
 
 That PiPeek, the hub, then shows an **All machines** row at the top of its
 page: CPU, memory and temperature for each Pi, plus under-voltage, a missing
-disk, a pending restart and warnings when there are any. Each card links to
-that Pi's own dashboard. A Pi that stops answering is marked offline with the
-time it was last seen.
+disk, a pending restart and warnings when there are any. A Pi that stops
+answering is marked offline with the time it was last seen.
+
+Click a card to see that Pi's full dashboard on the hub, at `/hosts/<name>`:
+the same cards and ten minutes of charts, built from what the hub fetches.
+"← All machines" leads back, and "Open on <name> ↗" goes to the Pi's own
+page. Only the hub needs to be reachable from your browser; the other Pis
+only have to answer the hub. If a Pi stops answering, its page keeps showing
+the last sample, marked as such.
 
 The hub fetches each peer's [`/api/sample.json`](#json-api) once per
-interval, with a short timeout, so a dead peer never delays the others. The
+interval, with a short timeout, so a dead peer never delays the others. A
+peer's page is only drawn while someone has it open. The
 peers need nothing new, and the hub costs a few MB of memory more than a
 single PiPeek. `/api/fleet.json` on the hub has every machine's sample in one
 document, which is what the [alert script](#alerts-on-your-phone) reads to

@@ -72,7 +72,7 @@ func TestFleet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hub.fleet = newFleet(peers, time.Second)
+	hub.fleet = newFleet(peers, time.Second, time.Minute)
 	hub.fleet.poll(context.Background())
 	now := time.Now()
 	hub.update(sample{At: now, CPU: 5, CPUOK: true})
@@ -124,10 +124,10 @@ func TestFleet(t *testing.T) {
 	// after three intervals, like /healthz.
 	good.Close()
 	hub.fleet.poll(context.Background())
-	if c := peerCard(hub.fleet.snapshot()[0], now.Add(2*time.Second), time.Second); !c.Online {
+	if c := peerCard(hub.fleet.snapshot()[0], "/", now.Add(2*time.Second), time.Second); !c.Online {
 		t.Fatal("offline too early")
 	}
-	c := peerCard(hub.fleet.snapshot()[0], now.Add(10*time.Second), time.Second)
+	c := peerCard(hub.fleet.snapshot()[0], "/", now.Add(10*time.Second), time.Second)
 	if c.Online || c.Status != "Offline" || c.Since.IsZero() || c.Reason != "not reachable" {
 		t.Fatalf("offline card: %+v", c)
 	}

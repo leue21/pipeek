@@ -46,7 +46,7 @@ func TestDashboardThroughProxy(t *testing.T) {
 				}
 				if route.path == base {
 					body := string(b)
-					if strings.Contains(body, "<script>alert(1)") || !strings.Contains(body, `hx-get="`+base+`metrics"`) || !strings.Contains(body, `href="`+base+`assets/style.css?v=fleet-1"`) {
+					if strings.Contains(body, "<script>alert(1)") || !strings.Contains(body, `hx-get="`+base+`metrics"`) || !strings.Contains(body, `href="`+base+`assets/style.css?v=hosts-1"`) {
 						t.Fatal("unsafe hostname or wrong prefix")
 					}
 				}
@@ -117,7 +117,7 @@ func TestBaseValidation(t *testing.T) {
 func BenchmarkSampleAndRender(b *testing.B) {
 	a, _ := newApp("/", "test", 3*time.Second, 10*time.Minute)
 	c := collector{proc: "/proc", sys: "/sys", disks: []string{"/"}}
-	for i := 0; i < len(a.points); i++ {
+	for i := 0; i < len(a.hist.points); i++ {
 		a.update(c.collect(time.Now()))
 	}
 	b.ResetTimer()

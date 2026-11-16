@@ -32,6 +32,8 @@ type view struct {
 	History                                            string
 	UnderVoltageSeen                                   time.Time
 	Hosts                                              []hostCard
+	Notice                                             string // a peer page's offline notice
+	NoData                                             bool   // a peer that never answered
 }
 type app struct {
 	base, host        string
@@ -45,8 +47,7 @@ type app struct {
 	sampled           time.Time
 	degraded          bool
 	// History is owned exclusively by the sampling goroutine.
-	points            []point
-	next, count       int
+	hist              *history
 	temperatureStatus temperatureStatus
 	underVoltageSeen  time.Time
 }
@@ -57,35 +58,16 @@ func newApp(base, host string, interval, history time.Duration) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &app{base: base, host: host, interval: interval, history: history, templates: t, points: make([]point, int(history/interval)+1)}, nil
+	return &app{base: base, host: host, interval: interval, history: history, templates: t, hist: newHistory(history, interval)}, nil
 }
 func (a *app) update(s sample) {
-	a.points[a.next] = point{At: s.At, CPU: s.CPU, Memory: percent(s.Memory.Used, s.Memory.Total), Temperature: s.Temperature, RX: s.RX, TX: s.TX, CPUOK: s.CPUOK, MemoryOK: s.MemoryOK, TempOK: s.TempOK, NetworkOK: s.NetworkOK}
-	a.next = (a.next + 1) % len(a.points)
-	if a.count < len(a.points) {
-		a.count++
-	}
-	points := make([]point, 0, a.count)
-	for i := 0; i < a.count; i++ {
-		p := a.points[(a.next-a.count+i+len(a.points))%len(a.points)]
-		if !p.At.Before(s.At.Add(-a.history)) {
-			points = append(points, p)
-		}
-	}
-	scale := 1024.0
-	for _, p := range points {
-		scale = math.Max(scale, math.Max(p.RX, p.TX))
-	}
+	a.hist.add(s)
 	a.temperatureStatus = nextTemperatureStatus(a.temperatureStatus, s.Temperature, s.TempOK)
 	if s.VoltageOK && s.UnderVoltage {
 		a.underVoltageSeen = s.At
 	}
-	v := view{TemperatureStatus: a.temperatureStatus, UnderVoltageSeen: a.underVoltageSeen, Hosts: a.hostCards(s), Sample: s, Count: len(points), History: a.history.String(), NetworkScale: formatBytes(scale) + "/s"}
-	v.CPUChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.CPU, p.CPUOK })
-	v.MemoryChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.Memory, p.MemoryOK })
-	v.TempChart = chart(points, s.At, a.history, a.interval, 100, func(p point) (float64, bool) { return p.Temperature, p.TempOK })
-	v.RXChart = chart(points, s.At, a.history, a.interval, scale, func(p point) (float64, bool) { return p.RX, p.NetworkOK })
-	v.TXChart = chart(points, s.At, a.history, a.interval, scale, func(p point) (float64, bool) { return p.TX, p.NetworkOK })
+	v := view{TemperatureStatus: a.temperatureStatus, UnderVoltageSeen: a.underVoltageSeen, Hosts: a.hostCards(s), Sample: s}
+	a.hist.fill(&v, s.At, a.interval)
 	var buf bytes.Buffer
 	if err := a.templates.ExecuteTemplate(&buf, "metrics", v); err != nil {
 		log.Printf("render metrics: %v", err)
@@ -119,7 +101,7 @@ func (a *app) hostCards(s sample) []hostCard {
 	}
 	cards := []hostCard{selfCard(s, a.host, a.base, a.temperatureStatus)}
 	for _, st := range a.fleet.snapshot() {
-		cards = append(cards, peerCard(st, s.At, a.interval))
+		cards = append(cards, peerCard(st, a.base, s.At, a.interval))
 	}
 	return cards
 }
@@ -182,12 +164,7 @@ func (a *app) handler() http.Handler {
 		age := max(int64(0), time.Since(a.sampled).Milliseconds())
 		a.mu.RUnlock()
 		// Only our escaped, rendered template is marked trusted here.
-		data := struct {
-			Base, Host string
-			Interval   int64
-			SampleAge  int64
-			Fragment   template.HTML
-		}{a.base, a.host, a.interval.Milliseconds(), age, template.HTML(fragment)}
+		data := pageData{Base: a.base, Host: a.host, MetricsURL: a.base + "metrics", Interval: a.interval.Milliseconds(), SampleAge: age, Fragment: template.HTML(fragment)}
 		var buf bytes.Buffer
 		if err := a.templates.ExecuteTemplate(&buf, "index.html", data); err != nil {
 			http.Error(w, "Unable to render dashboard", 500)
@@ -218,6 +195,8 @@ func (a *app) handler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(b)
 	})
+	mux.HandleFunc("GET "+a.base+"hosts/{name}", func(w http.ResponseWriter, r *http.Request) { a.servePeer(w, r, false) })
+	mux.HandleFunc("GET "+a.base+"hosts/{name}/metrics", func(w http.ResponseWriter, r *http.Request) { a.servePeer(w, r, true) })
 	mux.HandleFunc("GET "+a.base+"api/fleet.json", func(w http.ResponseWriter, r *http.Request) {
 		a.mu.RLock()
 		b := a.fleetJSON
