@@ -38,7 +38,8 @@ curl -fsSL https://raw.githubusercontent.com/leue21/pipeek/main/scripts/install.
 ```
 
 Run the same command again to upgrade; your `systemctl edit` settings are
-kept. [The script](scripts/install.sh) is short, so read it first if you
+kept. It waits a few seconds to make sure PiPeek stays running, and tells you
+if another program already uses its port. [The script](scripts/install.sh) is short, so read it first if you
 prefer. `PIPEEK_VERSION=v0.2.0` installs a specific release, and
 `PIPEEK_NO_SERVICE=1` installs only the binary.
 

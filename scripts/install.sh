@@ -96,15 +96,35 @@ fi
 
 $sudo install -m 0644 "$work/$name/deploy/pipeek.service" "$unitdir/pipeek.service"
 $sudo systemctl daemon-reload
-if systemctl is-active --quiet pipeek; then
-    $sudo systemctl restart pipeek
-    say "restarted the running service."
-else
-    $sudo systemctl enable --now pipeek
-    say "enabled and started the pipeek service."
-fi
-
 # Report the address the service really uses: a drop-in may override -listen.
 listen=$(systemctl show pipeek -p ExecStart --value | sed -n 's/.*-listen[ =]\([^ ;]*\).*/\1/p')
-say "done. PiPeek listens on ${listen:-127.0.0.1:8080} (see 'systemctl cat pipeek')."
+listen=${listen:-127.0.0.1:8080}
+
+if systemctl is-active --quiet pipeek; then
+    $sudo systemctl restart pipeek
+    started="restarted the running service"
+else
+    $sudo systemctl enable --now pipeek
+    started="enabled and started the pipeek service"
+fi
+
+# systemctl returns as soon as PiPeek is launched. If it then exits (most
+# often because another program already uses its port), systemd restarts it
+# in a loop. Watch it for a few seconds before calling the install a success.
+check_running() {
+    before=$(systemctl show "$1" -p NRestarts --value)
+    sleep "${2:-5}"
+    [ "$(systemctl is-active "$1")" = active ] && [ "$(systemctl show "$1" -p NRestarts --value)" = "$before" ]
+}
+if ! check_running pipeek; then
+    say "PiPeek was installed but does not stay running. Its last log lines:" >&2
+    $sudo journalctl -u pipeek -n 5 --no-pager -o cat >&2 || true
+    if $sudo journalctl -u pipeek -n 20 --no-pager -o cat 2>/dev/null | grep -q 'address already in use'; then
+        say "Another program already uses $listen. Pick a free port with:" >&2
+        say "  sudo systemctl edit pipeek   # ExecStart= then ExecStart=$bindir/pipeek -listen 127.0.0.1:<port>" >&2
+    fi
+    exit 1
+fi
+say "$started."
+say "done. PiPeek listens on $listen (see 'systemctl cat pipeek')."
 say "To reach it from your network, put it behind nginx or run: sudo systemctl edit pipeek"
