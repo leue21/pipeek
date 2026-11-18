@@ -368,7 +368,13 @@ warnings (such as a required mount going missing), and PiPeek not answering.
 On a hub, point `PIPEEK_URL` at `api/fleet.json` and one job covers every Pi,
 including ones that stop answering.
 While a problem lasts it keeps one message up to date instead of sending a new
-one each time, and it deletes the message once everything is fine again.
+one each time. Once everything is fine again, the message stays as a record,
+marked ✅ with the time it recovered and what the problem was.
+
+It sends at most one new message every 30 minutes. A problem that comes back
+sooner, such as a temperature hovering around the threshold, reopens the last
+message silently instead of notifying you again. Set `PIPEEK_ALERT_EVERY` (in
+seconds) to change the gap.
 
 ```sh
 # needs curl, jq and a configured morse
